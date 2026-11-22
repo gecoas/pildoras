@@ -124,7 +124,7 @@ jobs:
 
           ssh -T "${SSH_OPTIONS[@]}" "$PROD_USER@$PROD_HOST" true
 
-          REMOTE_COMMAND="GITHUB_SHA='$GITHUB_SHA' flock -w 120 /tmp/pildoras-deploy.lock bash -s"
+          REMOTE_COMMAND="GITHUB_SHA='$GITHUB_SHA' bash -s"
           ssh "${SSH_OPTIONS[@]}" "$PROD_USER@$PROD_HOST" "$REMOTE_COMMAND" <<'REMOTE'
             set -euo pipefail
 
