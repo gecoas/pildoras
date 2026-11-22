@@ -151,12 +151,5 @@ jobs:
             npm ci
             npm run build
             test -f dist/index.html
-
-            sudo install -D -m 0644 deploy/nginx/pildoras.gecoas.es.conf \
-              /etc/nginx/sites-available/pildoras.gecoas.es
-            sudo ln -sfn /etc/nginx/sites-available/pildoras.gecoas.es \
-              /etc/nginx/sites-enabled/pildoras.gecoas.es
-            sudo nginx -t
-            sudo systemctl reload nginx
             echo "Deploy completado correctamente para $GITHUB_SHA"
           REMOTE
