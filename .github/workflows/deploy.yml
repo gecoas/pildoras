@@ -157,21 +157,20 @@ jobs:
             git fetch --quiet origin "$GITHUB_SHA"
             git checkout --detach --force "$GITHUB_SHA"
             [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
-             git clean -fd -e .env
-             umask 077
-             cat > .env.next <<EOF
-POSTGRES_PASSWORD=$PILDORAS_POSTGRES_PASSWORD
-SESSION_SECRET=$PILDORAS_SESSION_SECRET
-GOOGLE_CLIENT_ID=$PILDORAS_GOOGLE_CLIENT_ID
-GOOGLE_CLIENT_SECRET=$PILDORAS_GOOGLE_CLIENT_SECRET
-GOOGLE_CALLBACK_URL=https://pildoras.gecoas.es/api/auth/callback
-ADMIN_EMAILS=gbailly@alcaste-lasfuentes.com
-GOOGLE_ALLOWED_DOMAINS=alcaste-lasfuentes.com,gecoas.com
-EOF
-             mv .env.next .env
-             chmod 600 .env
+            git clean -fd -e .env
+            umask 077
+            printf '%s\n' \
+              "POSTGRES_PASSWORD=$PILDORAS_POSTGRES_PASSWORD" \
+              "SESSION_SECRET=$PILDORAS_SESSION_SECRET" \
+              "GOOGLE_CLIENT_ID=$PILDORAS_GOOGLE_CLIENT_ID" \
+              "GOOGLE_CLIENT_SECRET=$PILDORAS_GOOGLE_CLIENT_SECRET" \
+              "GOOGLE_CALLBACK_URL=https://pildoras.gecoas.es/api/auth/callback" \
+              "ADMIN_EMAILS=gbailly@alcaste-lasfuentes.com" \
+              "GOOGLE_ALLOWED_DOMAINS=alcaste-lasfuentes.com,gecoas.com" > .env.next
+            mv .env.next .env
+            chmod 600 .env
 
-             npm ci
+            npm ci
             npm run build
             test -f dist/index.html
             docker ps -q --filter publish=8087 | xargs -r docker rm -f
