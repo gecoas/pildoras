@@ -42,7 +42,7 @@ export function createApp({ pool, oauthClient = new OAuth2Client(process.env.GOO
   };
   app.get('/api/data', publicData);
   for (const type of Object.keys(TYPES)) app.get(`/api/${type}`, async (req, res, next) => { try { res.json(normalizeRows((await pool.query(publicTableQuery(TYPES[type], type))).rows)); } catch (e) { next(e); } });
-  app.get('/api/auth/login', (req, res) => { const state = randomUUID(); req.session.oauthState = state; res.redirect(oauthClient.generateAuthUrl({ access_type: 'offline', scope: ['openid', 'email', 'profile'], prompt: 'select_account', state })); });
+  app.get('/api/auth/login', (req, res, next) => { const state = randomUUID(); req.session.oauthState = state; req.session.save(error => { if (error) return next(error); res.redirect(oauthClient.generateAuthUrl({ access_type: 'offline', scope: ['openid', 'email', 'profile'], prompt: 'select_account', state })); }); });
   app.get('/api/auth/callback', async (req, res, next) => { try {
     if (!req.query.state || req.query.state !== req.session.oauthState) return res.status(400).send('Estado OAuth inválido');
     delete req.session.oauthState;
