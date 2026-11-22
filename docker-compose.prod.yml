@@ -1,0 +1,10 @@
+services:
+  pildoras:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pildoras:prod
+    container_name: pildoras
+    restart: unless-stopped
+    ports:
+      - "8086:80"
