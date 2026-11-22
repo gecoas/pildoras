@@ -36,6 +36,9 @@ jobs:
       - name: Build application
         run: npm run build
 
+      - name: Test backend
+        run: npm test
+
   deploy:
     name: Deploy to production
     needs: quality
@@ -63,6 +66,10 @@ jobs:
           PROD_USER: ${{ vars.PROD_USER }}
           PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
           GITHUB_SHA: ${{ github.sha }}
+          PILDORAS_POSTGRES_PASSWORD: ${{ secrets.PILDORAS_POSTGRES_PASSWORD }}
+          PILDORAS_SESSION_SECRET: ${{ secrets.PILDORAS_SESSION_SECRET }}
+          PILDORAS_GOOGLE_CLIENT_ID: ${{ secrets.PILDORAS_GOOGLE_CLIENT_ID }}
+          PILDORAS_GOOGLE_CLIENT_SECRET: ${{ secrets.PILDORAS_GOOGLE_CLIENT_SECRET }}
         run: |
           set -euo pipefail
           umask 077
@@ -84,6 +91,10 @@ jobs:
             echo "GITHUB_SHA no tiene formato de commit valido" >&2
             exit 1
           fi
+          : "${PILDORAS_POSTGRES_PASSWORD:?Falta el secreto PILDORAS_POSTGRES_PASSWORD}"
+          : "${PILDORAS_SESSION_SECRET:?Falta el secreto PILDORAS_SESSION_SECRET}"
+          : "${PILDORAS_GOOGLE_CLIENT_ID:?Falta el secreto PILDORAS_GOOGLE_CLIENT_ID}"
+          : "${PILDORAS_GOOGLE_CLIENT_SECRET:?Falta el secreto PILDORAS_GOOGLE_CLIENT_SECRET}"
 
           KNOWN_HOSTS="$GITHUB_WORKSPACE/.github/production_known_hosts"
           SSH_KEY="$(mktemp)"
@@ -124,7 +135,7 @@ jobs:
 
           ssh -T "${SSH_OPTIONS[@]}" "$PROD_USER@$PROD_HOST" true
 
-          REMOTE_COMMAND="GITHUB_SHA='$GITHUB_SHA' bash -s"
+          REMOTE_COMMAND="GITHUB_SHA=$(printf '%q' "$GITHUB_SHA") PILDORAS_POSTGRES_PASSWORD=$(printf '%q' "$PILDORAS_POSTGRES_PASSWORD") PILDORAS_SESSION_SECRET=$(printf '%q' "$PILDORAS_SESSION_SECRET") PILDORAS_GOOGLE_CLIENT_ID=$(printf '%q' "$PILDORAS_GOOGLE_CLIENT_ID") PILDORAS_GOOGLE_CLIENT_SECRET=$(printf '%q' "$PILDORAS_GOOGLE_CLIENT_SECRET") bash -s"
           ssh "${SSH_OPTIONS[@]}" "$PROD_USER@$PROD_HOST" "$REMOTE_COMMAND" <<'REMOTE'
             set -euo pipefail
 
@@ -146,9 +157,21 @@ jobs:
             git fetch --quiet origin "$GITHUB_SHA"
             git checkout --detach --force "$GITHUB_SHA"
             [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
-            git clean -fd
+             git clean -fd -e .env
+             umask 077
+             cat > .env.next <<EOF
+POSTGRES_PASSWORD=$PILDORAS_POSTGRES_PASSWORD
+SESSION_SECRET=$PILDORAS_SESSION_SECRET
+GOOGLE_CLIENT_ID=$PILDORAS_GOOGLE_CLIENT_ID
+GOOGLE_CLIENT_SECRET=$PILDORAS_GOOGLE_CLIENT_SECRET
+GOOGLE_CALLBACK_URL=https://pildoras.gecoas.es/api/auth/callback
+ADMIN_EMAILS=gbailly@alcaste-lasfuentes.com
+GOOGLE_ALLOWED_DOMAINS=alcaste-lasfuentes.com,gecoas.com
+EOF
+             mv .env.next .env
+             chmod 600 .env
 
-            npm ci
+             npm ci
             npm run build
             test -f dist/index.html
             docker ps -q --filter publish=8087 | xargs -r docker rm -f

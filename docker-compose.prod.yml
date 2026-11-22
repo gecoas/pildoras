@@ -1,4 +1,39 @@
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: pildoras-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pildoras}
+      POSTGRES_USER: ${POSTGRES_USER:-pildoras}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD in .env}
+    volumes:
+      - pildoras-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: pildoras-api:prod
+    container_name: pildoras-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-pildoras}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-pildoras}
+      SESSION_SECRET: ${SESSION_SECRET:?Define SESSION_SECRET in .env}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?Define GOOGLE_CLIENT_ID in .env}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?Define GOOGLE_CLIENT_SECRET in .env}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-https://pildoras.example.com/api/auth/callback}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-gbailly@alcaste-lasfuentes.com}
+      GOOGLE_ALLOWED_DOMAINS: ${GOOGLE_ALLOWED_DOMAINS:-alcaste-lasfuentes.com}
+    depends_on:
+      db:
+        condition: service_healthy
+
   pildoras:
     build:
       context: .
@@ -8,3 +43,8 @@ services:
     restart: unless-stopped
     ports:
       - "8087:80"
+    depends_on:
+      - api
+
+volumes:
+  pildoras-postgres:
