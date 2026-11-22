@@ -11,6 +11,9 @@ const jsonLimit = '2mb';
 const asList = value => String(value || '').split(',').map(x => x.trim()).filter(Boolean);
 const allowedDomains = () => asList(process.env.GOOGLE_ALLOWED_DOMAINS || 'alcaste-lasfuentes.com,gecoas.com');
 const adminEmails = () => asList(process.env.ADMIN_EMAILS || 'gbailly@alcaste-lasfuentes.com').map(x => x.toLowerCase());
+const publicTableQuery = (table, type) => type === 'entries'
+  ? `SELECT id, data FROM ${table} WHERE LOWER(COALESCE(data->>'Estado', '')) LIKE '%publicad%' ORDER BY updated_at DESC`
+  : `SELECT id, data FROM ${table} ORDER BY updated_at DESC`;
 
 export function isAdmin(profile) {
   const email = String(profile?.email || '').toLowerCase();
@@ -19,6 +22,7 @@ export function isAdmin(profile) {
 
 export function createApp({ pool, oauthClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, process.env.GOOGLE_CALLBACK_URL || '/api/auth/callback') } = {}) {
   if (!pool) throw new Error('A PostgreSQL pool is required');
+  if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET) throw new Error('SESSION_SECRET must be set in production');
   const app = express();
   app.set('trust proxy', 1);
   app.use(helmet({ contentSecurityPolicy: false }));
@@ -32,12 +36,12 @@ export function createApp({ pool, oauthClient = new OAuth2Client(process.env.GOO
 
   const publicData = async (req, res) => {
     const out = {};
-    for (const [type, table] of Object.entries(TYPES)) out[type] = normalizeRows((await pool.query(`SELECT id, data FROM ${table} ORDER BY updated_at DESC`)).rows);
+    for (const [type, table] of Object.entries(TYPES)) out[type] = normalizeRows((await pool.query(publicTableQuery(table, type))).rows);
     out.site = (await pool.query('SELECT data FROM site_config WHERE id = 1')).rows[0]?.data || {};
     res.json(out);
   };
   app.get('/api/data', publicData);
-  for (const type of Object.keys(TYPES)) app.get(`/api/${type}`, async (req, res, next) => { try { res.json(normalizeRows((await pool.query(`SELECT id, data FROM ${TYPES[type]} ORDER BY updated_at DESC`)).rows)); } catch (e) { next(e); } });
+  for (const type of Object.keys(TYPES)) app.get(`/api/${type}`, async (req, res, next) => { try { res.json(normalizeRows((await pool.query(publicTableQuery(TYPES[type], type))).rows)); } catch (e) { next(e); } });
   app.get('/api/auth/login', (req, res) => { const state = randomUUID(); req.session.oauthState = state; res.redirect(oauthClient.generateAuthUrl({ access_type: 'offline', scope: ['openid', 'email', 'profile'], prompt: 'select_account', state })); });
   app.get('/api/auth/callback', async (req, res, next) => { try {
     if (!req.query.state || req.query.state !== req.session.oauthState) return res.status(400).send('Estado OAuth inválido');
