@@ -164,6 +164,8 @@ jobs:
               fi
               rm -f "$PID_FILE"
             fi
+            fuser -k 8086/tcp 2>/dev/null || true
+            sleep 1
 
             setsid npm run preview -- --host 0.0.0.0 --port 8086 \
               > /tmp/pildoras-preview.log 2>&1 < /dev/null &
