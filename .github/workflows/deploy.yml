@@ -151,9 +151,9 @@ jobs:
             npm ci
             npm run build
             test -f dist/index.html
-            docker ps -q --filter publish=8086 | xargs -r docker rm -f
-            fuser -k 8086/tcp 2>/dev/null || true
+            docker ps -q --filter publish=8087 | xargs -r docker rm -f
+            fuser -k 8087/tcp 2>/dev/null || true
             docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
-            curl --fail --silent --show-error http://127.0.0.1:8086/ >/dev/null
+            curl --fail --silent --show-error http://127.0.0.1:8087/ >/dev/null
             echo "Deploy completado correctamente para $GITHUB_SHA"
           REMOTE
