@@ -183,5 +183,6 @@ jobs:
               sleep 1
             done
             curl --fail --silent --show-error http://127.0.0.1:8087/ >/dev/null
+            docker compose -f docker-compose.prod.yml exec -T api node server/import-csv.js
             echo "Deploy completado correctamente para $GITHUB_SHA"
           REMOTE
