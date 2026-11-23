@@ -7,42 +7,171 @@ import staticSiteRows from '../public/data/Anyone.json';
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const fallback = { entries: staticEntries, authors: staticAuthors, categories: staticCategories, site: staticSiteRows[0] || {} };
-let data = fallback, query = '', category = 'Todas', page = 1, admin = false, authorMode = false;
+const categoryIcons = { App: '▣', IA: '✦', Web: '⌁', Documento: '▤' };
+const categoryClasses = { App: 'app', IA: 'ia', Web: 'web', Documento: 'documento' };
 const typeLabels = { entries: 'Entradas', authors: 'Autores', categories: 'Categorías' };
+let data = fallback;
+let state = { view: 'home', query: '', category: 'Todas', author: '', page: 1, admin: false };
 
-async function loadData() { try { const response = await fetch('/api/data'); if (!response.ok) throw new Error(); data = await response.json(); } catch { data = fallback; } }
-function categoryNames(entry) { return String(entry.Categorías || '').split(',').map(id => data.categories.find(c => c['🔒 Row ID'] === id)?.Categoría).filter(Boolean); }
-function dateOf(value) { const match = String(value || '').match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/); return match ? new Date(+match[3], +match[2] - 1, +match[1]) : new Date(0); }
-function card(entry) { const names = categoryNames(entry); const date = dateOf(entry['Fecha creación']); const dateText = date.getTime() ? new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }).format(date).replace('.', '').toUpperCase() : ''; return `<article class="resource" data-id="${esc(entry['🔒 Row ID'])}"><div class="thumb">${entry.Imagen ? `<img loading="lazy" src="${esc(entry.Imagen)}" alt="" onerror="this.remove()">` : ''}<span class="type">${esc(names[0] || 'RECURSO')}</span><span class="arrow">↗</span></div><div class="card-body"><div class="meta">${dateText ? `<span>${dateText}</span><i>·</i>` : ''}<span>${names.map(esc).join(', ')}</span></div><h3>${esc(entry.Título)}</h3><p>${esc(entry.Texto).replace(/\s+/g, ' ').slice(0, 150)}${String(entry.Texto || '').length > 150 ? '…' : ''}</p><div class="card-foot"><span>Leer recurso</span><span>↗</span></div></div></article>`; }
-function render() {
-  const visible = data.entries.filter(entry => /publicad/i.test(entry.Estado || ''));
-  const rows = visible.filter(entry => (category === 'Todas' || categoryNames(entry).includes(category)) && (!authorMode || entry['Autor Email'])).filter(entry => !query || [entry.Título, entry.Texto, entry['Autor Email'], ...categoryNames(entry)].join(' ').toLocaleLowerCase('es').includes(query.toLocaleLowerCase('es'))).sort((a, b) => dateOf(b['Fecha creación']) - dateOf(a['Fecha creación']));
-  const pages = Math.max(1, Math.ceil(rows.length / 12)); page = Math.min(page, pages);
-  $('#app').innerHTML = `<header class="top"><a class="brand" href="#"><span class="mark">✦</span><span>${esc(data.site['Título del sitio'] || 'Píldoras de Innovación')}</span></a><nav><button class="navbtn ${!authorMode ? 'active' : ''}" data-view="home">Inicio</button><button class="navbtn ${authorMode ? 'active' : ''}" data-view="authors">Autores</button></nav><button class="signin" id="admin-login">Administrar ↗</button></header><main><section class="hero"><div class="hero-copy"><div class="eyebrow"><i></i> IDEAS PARA TRANSFORMAR EL AULA</div><h1>Pequeñas píldoras.<br><em>Grandes ideas.</em></h1><p>${esc(data.site['Mensaje inicial'] || 'Recursos para profesores: Inspira tu aula, impulsa tu éxito.')}</p><div class="search"><span>⌕</span><input id="search" placeholder="${esc(data.site['Texto a buscar'] || 'Buscar recursos...')}" value="${esc(query)}"><kbd>⌘ K</kbd></div></div><div class="hero-art"><div class="orb orb1"></div><div class="orb orb2"></div><div class="floating f1">✦</div><div class="floating f2">✧</div><div class="art-card"><span>IDEA DE HOY</span><div class="bulb">✦</div><strong>Inspira<br>el cambio</strong><small>Una idea puede cambiarlo todo.</small></div></div></section><section class="listing"><div class="list-head"><div><div class="eyebrow muted">BIBLIOTECA DE RECURSOS</div><h2>${authorMode ? 'Autores' : 'Explora las píldoras'}</h2><p class="count">${rows.length} recursos para inspirarte</p></div></div><div class="chips"><button class="chip ${category === 'Todas' ? 'chosen' : ''}" data-cat="Todas">Todo <b>${visible.length}</b></button>${data.categories.map(c => `<button class="chip ${category === c.Categoría ? 'chosen' : ''}" data-cat="${esc(c.Categoría)}">${esc(c.Categoría)}</button>`).join('')}</div><div class="grid">${rows.slice((page - 1) * 12, page * 12).map(card).join('') || '<div class="empty">No encontramos recursos con esos filtros.</div>'}</div><div class="pagination"><button id="prev" ${page === 1 ? 'disabled' : ''}>← Anterior</button><span>${page} / ${pages}</span><button id="next" ${page === pages ? 'disabled' : ''}>Siguiente →</button></div></section></main>`;
-  $('#search').oninput = event => { query = event.target.value; page = 1; render(); $('#search').focus(); $('#search').setSelectionRange(query.length, query.length); };
-  document.querySelectorAll('[data-cat]').forEach(button => { button.onclick = () => { category = button.dataset.cat; page = 1; render(); }; });
-  $('#prev').onclick = () => { page--; render(); }; $('#next').onclick = () => { page++; render(); };
-  document.querySelectorAll('[data-view]').forEach(button => { button.onclick = () => { authorMode = button.dataset.view === 'authors'; render(); }; });
-  $('#admin-login').onclick = () => { window.location.href = '/api/auth/login'; };
-  document.querySelectorAll('.resource').forEach(element => { element.onclick = () => openEntry(rows.find(row => row['🔒 Row ID'] === element.dataset.id)); });
-  if (admin) renderAdmin();
+async function loadData() {
+  try {
+    const response = await fetch('/api/data');
+    if (!response.ok) throw new Error();
+    data = await response.json();
+  } catch { data = fallback; }
 }
-function openEntry(entry) { if (!entry) return; const modal = document.createElement('div'); modal.className = 'modal'; modal.innerHTML = `<div class="modal-box"><button class="close">×</button><div class="eyebrow">${categoryNames(entry).map(esc).join(' · ')}</div><h2>${esc(entry.Título)}</h2><p class="modal-date">${esc(entry['Fecha creación'] || '')}</p><div class="modal-text">${esc(entry.Texto).replace(/\n/g, '<br>')}</div>${entry.Enlace ? `<a class="outlink" href="${esc(entry.Enlace)}" target="_blank" rel="noopener">Abrir recurso original ↗</a>` : ''}</div>`; document.body.append(modal); modal.onclick = event => { if (event.target === modal || event.target.closest('.close')) modal.remove(); }; }
+
+function dateOf(value) {
+  const text = String(value || '');
+  const iso = Date.parse(text);
+  if (!Number.isNaN(iso) && /\d{4}-\d{2}-\d{2}/.test(text)) return new Date(iso);
+  const match = text.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+  return match ? new Date(+match[3], +match[2] - 1, +match[1]) : new Date(0);
+}
+
+function dateText(value, compact = false) {
+  const date = dateOf(value);
+  if (!date.getTime()) return '';
+  return new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: compact ? 'short' : 'long', year: 'numeric' }).format(date).replace('.', '').toUpperCase();
+}
+
+function categoryNames(entry) {
+  return String(entry?.Categorías || '').split(',').map(id => data.categories.find(category => category['🔒 Row ID'] === id)?.Categoría).filter(Boolean);
+}
+
+function authorName(email) {
+  const names = { 'gbailly@alcaste-lasfuentes.com': 'Gabriel Bailly-Bailliere', 'agaillard@alcaste-lasfuentes.com': 'Aude Gaillard', 'pepe@alcaste-lasfuentes.com': 'Pepe', 'sgascon@alcaste-lasfuentes.com': 'Sonia Gascón', 'dgutierrez@gecoas.com': 'David Gutiérrez' };
+  return names[email] || String(email || 'Autor').split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
+function publishedEntries() { return data.entries.filter(entry => /publicad/i.test(entry.Estado || '')); }
+
+function filteredEntries() {
+  const query = state.query.toLocaleLowerCase('es');
+  return publishedEntries().filter(entry => {
+    const categories = categoryNames(entry);
+    const haystack = [entry.Título, entry.Texto, entry['Autor Email'], ...categories].join(' ').toLocaleLowerCase('es');
+    return (state.category === 'Todas' || categories.includes(state.category)) && (!state.author || entry['Autor Email'] === state.author) && (!query || haystack.includes(query));
+  }).sort((a, b) => dateOf(b['Fecha creación']) - dateOf(a['Fecha creación']));
+}
+
+function categoryPills(entry) { return categoryNames(entry).map(name => `<span class="pill">${esc(name)}</span>`).join(''); }
+
+function categoryArtwork(category) {
+  const name = category.Categoría || 'Recurso';
+  const kind = categoryClasses[name] || 'app';
+  return `<div class="category-art ${kind}">${category.Imagen || category.Logo ? `<img src="${esc(category.Imagen || category.Logo)}" alt="" onerror="this.style.display='none'">` : `<span>${categoryIcons[name] || '✦'}</span>`}</div>`;
+}
+
+function thumbnail(entry, large = false) {
+  const names = categoryNames(entry);
+  const kind = categoryClasses[names[0]] || 'app';
+  return `<div class="thumb ${large ? 'thumb-large' : ''} ${kind}">${entry.Imagen ? `<img loading="lazy" src="${esc(entry.Imagen)}" alt="" onerror="this.style.display='none'">` : `<span>${categoryIcons[names[0]] || '✦'}</span>`}</div>`;
+}
+
+function card(entry) {
+  return `<article class="resource-card" data-entry="${esc(entry['🔒 Row ID'])}">${thumbnail(entry, true)}<div class="card-content"><div class="date">${esc(dateText(entry['Fecha creación'], true))}</div><h3>${esc(entry.Título)}</h3><div class="card-categories">${categoryPills(entry)}</div><p>${esc(String(entry.Texto || '').replace(/\s+/g, ' ').slice(0, 135))}${String(entry.Texto || '').length > 135 ? '…' : ''}</p><div class="read-more">Leer entrada <span>›</span></div></div></article>`;
+}
+
+function listRow(entry) {
+  return `<button class="entry-row" data-entry="${esc(entry['🔒 Row ID'])}">${thumbnail(entry)}<span class="row-copy"><span class="date">${esc(dateText(entry['Fecha creación'], true))}</span><strong>${esc(entry.Título)}</strong><span class="row-meta">${esc(authorName(entry['Autor Email']))} · ${categoryNames(entry).map(esc).join(', ')}</span></span><span class="chevron">›</span></button>`;
+}
+
+function pagination(total, perPage = 12) {
+  const pages = Math.max(1, Math.ceil(total / perPage));
+  state.page = Math.min(state.page, pages);
+  if (pages === 1) return '';
+  return `<div class="pagination"><button data-page="${state.page - 1}" ${state.page === 1 ? 'disabled' : ''}>Anterior</button>${Array.from({ length: pages }, (_, index) => `<button class="${state.page === index + 1 ? 'current' : ''}" data-page="${index + 1}">${index + 1}</button>`).join('')}<button data-page="${state.page + 1}" ${state.page === pages ? 'disabled' : ''}>Siguiente</button></div>`;
+}
+
+function categoryCollection() {
+  return `<div class="category-grid">${data.categories.map(category => `<button class="category-tile" data-category-view="${esc(category.Categoría)}">${categoryArtwork(category)}<strong>${esc(category.Categoría)}</strong><span>${publishedEntries().filter(entry => categoryNames(entry).includes(category.Categoría)).length} entradas</span></button>`).join('')}</div>`;
+}
+
+function renderHome() {
+  const rows = filteredEntries();
+  const start = (state.page - 1) * 12;
+  return `<section class="hero"><div class="hero-copy"><span class="overline">RECURSOS PARA PROFESORES</span><h1>Ideas que <em>inspiran</em><br>tu aula.</h1><p>${esc(data.site['Mensaje inicial'] || 'Descubre herramientas, ideas y recursos para transformar tus clases.')}</p><div class="hero-actions"><button class="subscribe">♡ Suscribirme</button><div class="search-field"><span>⌕</span><input id="search" value="${esc(state.query)}" placeholder="${esc(data.site['Texto a buscar'] || 'Buscar')}"><kbd>⌘ K</kbd></div></div></div><div class="hero-note"><span>UNA IDEA<br>PARA HOY</span><b>✦</b><strong>Inspira<br>el cambio</strong><small>Píldoras para avanzar.</small></div></section><section class="section-block"><div class="section-heading"><div><span class="overline">EXPLORA POR TEMA</span><h2>Categorías</h2></div><button class="text-link" data-view="categories">Ver todas <span>→</span></button></div>${categoryCollection()}</section><section class="section-block"><div class="section-heading"><div><span class="overline">LA BIBLIOTECA</span><h2>Entradas</h2><p class="muted">${rows.length} recursos para inspirarte</p></div><button class="text-link" data-view="entries">Ver lista <span>→</span></button></div><div class="card-grid">${rows.slice(start, start + 12).map(card).join('') || '<div class="empty">No encontramos recursos con esos filtros.</div>'}</div>${pagination(rows.length)}</section>`;
+}
+
+function renderEntries() {
+  const rows = filteredEntries();
+  const start = (state.page - 1) * 24;
+  return `<section class="page-heading"><div><span class="overline">BIBLIOTECA DE RECURSOS</span><h1>Entradas publicadas</h1><p class="muted">Consulta y descubre todas las píldoras de innovación.</p></div><button class="primary" id="admin-login">+ Añade Entrada</button></section><div class="toolbar"><div class="search-field compact"><span>⌕</span><input id="search" value="${esc(state.query)}" placeholder="Buscar"></div><div class="filter-pills"><button class="pill-button ${state.category === 'Todas' ? 'selected' : ''}" data-category="Todas">Todas</button>${data.categories.map(category => `<button class="pill-button ${state.category === category.Categoría ? 'selected' : ''}" data-category="${esc(category.Categoría)}">${esc(category.Categoría)}</button>`).join('')}</div></div><div class="entry-list">${rows.slice(start, start + 24).map(listRow).join('') || '<div class="empty">No encontramos entradas.</div>'}</div>${pagination(rows.length, 24)}`;
+}
+
+function renderCategories() {
+  return `<section class="page-heading"><div><span class="overline">DESCUBRE NUEVOS TEMAS</span><h1>Categorías</h1><p class="muted">Encuentra recursos agrupados por temática.</p></div><button class="primary" id="admin-login">+ Añadir</button></section><section class="category-page-grid">${categoryCollection()}</section>`;
+}
+
+function renderAuthors() {
+  const authorEntries = state.author ? filteredEntries() : [];
+  return `<section class="page-heading centered"><div><p class="help">Pulsa ⚙️ para filtrar las publicaciones del Autor</p><h1>Autores</h1></div><button class="primary" id="admin-login">+ Añade Autor</button></section><div class="authors-grid">${data.authors.map(author => { const email = author['email Autor']; return `<article class="author-card"><div class="avatar">${esc(authorName(email).slice(0, 1))}</div><strong>${esc(authorName(email))}</strong><span>${esc(email)}</span><button class="author-filter ${state.author === email ? 'selected' : ''}" data-author="${esc(email)}">${state.author === email ? 'Publicaciones' : '⚙️'}</button></article>`; }).join('')}</div>${state.author ? `<section class="author-results"><div class="section-heading"><div><span class="overline">PUBLICACIONES DE AUTOR</span><h2>${esc(authorName(state.author))}</h2></div><button class="text-link" data-clear-author>Limpiar filtro</button></div><div class="entry-list">${authorEntries.map(listRow).join('') || '<div class="empty">Este autor todavía no tiene publicaciones.</div>'}</div></section>` : ''}`;
+}
+
+function renderShell() {
+  const siteTitle = data.site['Título del sitio'] || 'Píldoras de Innovación';
+  const views = { home: renderHome, entries: renderEntries, categories: renderCategories, authors: renderAuthors };
+  $('#app').innerHTML = `<header class="topbar"><a href="#" class="brand" data-view="home"><span class="logo"><i></i><i></i><i></i></span><span>${esc(siteTitle)}</span></a><nav>${[['home', '⌂', 'Inicio'], ['entries', '♙', 'Entradas'], ['categories', '▣', 'Categorías'], ['authors', '✎', 'Autores']].map(([view, icon, label]) => `<button class="nav-item ${state.view === view ? 'active' : ''}" data-view="${view}"><span>${icon}</span>${label}</button>`).join('')}</nav><div class="account-links"><button class="plain-link">Iniciar sesión</button><button class="signup">Registrarse</button></div></header><main>${views[state.view]()}</main><footer><span class="logo small"><i></i><i></i><i></i></span><span>${esc(siteTitle)}</span><span class="footer-note">Recursos que dejan huella.</span></footer>`;
+  bindInteractions();
+  if (state.admin) renderAdmin();
+}
+
+function bindInteractions() {
+  document.querySelectorAll('[data-view]').forEach(button => button.onclick = event => { event.preventDefault(); state.view = button.dataset.view; state.page = 1; renderShell(); });
+  document.querySelectorAll('[data-category]').forEach(button => button.onclick = () => { state.category = button.dataset.category; state.view = state.view === 'categories' ? 'entries' : state.view; state.page = 1; renderShell(); });
+  document.querySelectorAll('[data-category-view]').forEach(button => button.onclick = () => openCategory(button.dataset.categoryView));
+  document.querySelectorAll('[data-page]').forEach(button => button.onclick = () => { if (!button.disabled) { state.page = Number(button.dataset.page); renderShell(); } });
+  document.querySelectorAll('[data-entry]').forEach(button => button.onclick = () => openEntry(filteredEntries().find(entry => entry['🔒 Row ID'] === button.dataset.entry) || data.entries.find(entry => entry['🔒 Row ID'] === button.dataset.entry)));
+  document.querySelectorAll('[data-author]').forEach(button => button.onclick = () => { state.author = button.dataset.author; state.view = 'authors'; state.page = 1; renderShell(); });
+  document.querySelector('[data-clear-author]')?.addEventListener('click', () => { state.author = ''; renderShell(); });
+  const search = $('#search');
+  if (search) { search.oninput = event => { state.query = event.target.value; state.page = 1; renderShell(); $('#search')?.focus(); $('#search')?.setSelectionRange(state.query.length, state.query.length); }; search.onkeydown = event => { if (event.key === 'Enter') { state.view = 'entries'; renderShell(); } }; }
+  document.querySelectorAll('#admin-login, .plain-link').forEach(button => button.onclick = () => { window.location.href = '/api/auth/login'; });
+}
+
+function openCategory(name) {
+  const entries = publishedEntries().filter(entry => categoryNames(entry).includes(name)).sort((a, b) => dateOf(b['Fecha creación']) - dateOf(a['Fecha creación']));
+  const category = data.categories.find(item => item.Categoría === name) || { Categoría: name };
+  const modal = document.createElement('div');
+  modal.className = 'modal category-modal';
+  modal.innerHTML = `<div class="modal-box category-box"><button class="close">×</button><div class="category-detail"><button class="back-link">‹ Inicio / ${esc(name)}</button>${categoryArtwork(category)}<h2>${esc(name)}</h2><p>nº de entradas: ${entries.length}</p></div><div class="category-entry-list">${entries.map(listRow).join('') || '<div class="empty">No hay entradas en esta categoría.</div>'}</div></div>`;
+  document.body.append(modal);
+  modal.onclick = event => { if (event.target === modal || event.target.closest('.close,.back-link')) modal.remove(); };
+  modal.querySelectorAll('[data-entry]').forEach(button => button.onclick = () => { modal.remove(); openEntry(entries.find(entry => entry['🔒 Row ID'] === button.dataset.entry)); });
+}
+
+function openEntry(entry) {
+  if (!entry) return;
+  const related = publishedEntries().filter(item => item['🔒 Row ID'] !== entry['🔒 Row ID'] && categoryNames(item).some(name => categoryNames(entry).includes(name))).slice(0, 4);
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.innerHTML = `<div class="modal-box"><button class="close">×</button><div class="modal-inner"><div class="date">${esc(dateText(entry['Fecha creación']))}</div><h2>${esc(entry.Título)}</h2><p class="modal-author">${esc(authorName(entry['Autor Email']))} · <span>⏱ Tiempo estimado de lectura: ${esc(entry['Tiempo de lectura'] || '3')} minutos</span></p><div class="modal-actions"><button>♙ Autores</button><button>↗ Comparte</button><span>Última visita · ${esc(entry['nº visitas'] || '0')} visitas</span></div><div class="modal-pills">${categoryPills(entry)}</div><div class="modal-text">${esc(entry.Texto || '').replace(/\n/g, '<br>')}</div>${entry.Enlace ? `<a class="modal-link" href="${esc(entry.Enlace)}" target="_blank" rel="noopener">Enlace ↗</a>` : ''}${entry.Archivo ? `<a class="modal-link" href="${esc(entry.Archivo)}" target="_blank" rel="noopener">Archivo ↗</a>` : ''}</div>${related.length ? `<div class="related"><div class="overline">ARTÍCULOS RELACIONADOS</div><div class="related-grid">${related.map(card).join('')}</div></div>` : ''}</div>`;
+  document.body.append(modal);
+  modal.onclick = event => { if (event.target === modal || event.target.closest('.close')) modal.remove(); };
+  modal.querySelectorAll('[data-entry]').forEach(button => button.onclick = () => { modal.remove(); openEntry(related.find(item => item['🔒 Row ID'] === button.dataset.entry)); });
+}
+
 async function renderAdmin() {
-  const me = await fetch('/api/auth/me').then(response => response.json()).catch(() => ({})); if (!me.user) return;
-  const panel = document.createElement('section'); panel.className = 'admin-panel'; panel.innerHTML = `<div class="admin-head"><div><div class="eyebrow">ADMINISTRACIÓN</div><h2>Contenido</h2><p>Sesión: ${esc(me.user.email)}</p></div><button id="logout">Cerrar sesión</button></div><div class="admin-toolbar"><select id="entity">${Object.entries(typeLabels).map(([key, label]) => `<option value="${key}">${label}</option>`).join('')}</select><button id="new-record">Nueva</button><button id="duplicate-record">Duplicar</button><button id="import-json">Importar JSON</button><input id="json-file" type="file" accept="application/json,.json" hidden></div><div id="admin-list"></div><textarea id="record-editor" class="record-editor" spellcheck="false" placeholder="Selecciona un registro o crea uno nuevo"></textarea><div class="admin-actions"><button id="save-record">Guardar</button><button id="delete-record" class="danger">Borrar</button><span id="admin-status"></span></div>`; $('#app').append(panel);
-  let selected = null; const entity = $('#entity'), list = $('#admin-list'), editor = $('#record-editor');
+  const me = await fetch('/api/auth/me').then(response => response.json()).catch(() => ({}));
+  if (!me.user) return;
+  const panel = document.createElement('section');
+  panel.className = 'admin-panel';
+  panel.innerHTML = `<div class="admin-head"><div><span class="overline">ADMINISTRACIÓN</span><h2>Contenido</h2><p>Sesión: ${esc(me.user.email)}</p></div><button id="logout">Cerrar sesión</button></div><div class="admin-toolbar"><select id="entity">${Object.entries(typeLabels).map(([key, label]) => `<option value="${key}">${label}</option>`).join('')}</select><button id="new-record">Nueva</button><button id="duplicate-record">Duplicar</button><button id="import-json">Importar JSON</button><input id="json-file" type="file" accept="application/json,.json" hidden></div><div id="admin-list"></div><textarea id="record-editor" class="record-editor" spellcheck="false" placeholder="Selecciona un registro o crea uno nuevo"></textarea><div class="admin-actions"><button id="save-record">Guardar</button><button id="delete-record" class="danger">Borrar</button><span id="admin-status"></span></div>`;
+  $('main').append(panel);
+  let selected = null;
+  const entity = $('#entity'), list = $('#admin-list'), editor = $('#record-editor');
   const refresh = () => { const rows = data[entity.value] || []; list.innerHTML = rows.map((row, index) => `<button class="admin-row" data-index="${index}">${esc(row.Título || row.Categoría || row['email Autor'] || row['🔒 Row ID'] || 'Sin título')}</button>`).join('') || '<p>No hay registros.</p>'; document.querySelectorAll('.admin-row').forEach(row => row.onclick = () => { selected = Number(row.dataset.index); editor.value = JSON.stringify(data[entity.value][selected], null, 2); }); };
   entity.onchange = () => { selected = null; editor.value = ''; refresh(); }; refresh();
   $('#new-record').onclick = () => { selected = null; editor.value = JSON.stringify({}, null, 2); };
-  $('#duplicate-record').onclick = async () => { if (selected === null) return; const row = data[entity.value][selected]; const response = await fetch(`/api/admin/${entity.value}/${encodeURIComponent(row['🔒 Row ID'])}/duplicate`, { method: 'POST' }); if (!response.ok) { $('#admin-status').textContent = 'No se pudo duplicar'; return; } await loadData(); render(); admin = true; renderAdmin(); };
-  $('#save-record').onclick = async () => { try { const row = JSON.parse(editor.value); const type = entity.value; const id = row['🔒 Row ID']; const response = await fetch(`/api/admin/${type}${selected === null ? '' : `/${encodeURIComponent(id)}`}`, { method: selected === null ? 'POST' : 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) }); if (!response.ok) throw new Error((await response.json()).error); await loadData(); render(); admin = true; renderAdmin(); } catch (error) { $('#admin-status').textContent = error.message; } };
-  $('#delete-record').onclick = async () => { if (selected === null || !confirm('¿Borrar este registro?')) return; const row = data[entity.value][selected]; await fetch(`/api/admin/${entity.value}/${encodeURIComponent(row['🔒 Row ID'])}`, { method: 'DELETE' }); await loadData(); render(); admin = true; renderAdmin(); };
+  $('#duplicate-record').onclick = async () => { if (selected === null) return; const row = data[entity.value][selected]; const response = await fetch(`/api/admin/${entity.value}/${encodeURIComponent(row['🔒 Row ID'])}/duplicate`, { method: 'POST' }); if (!response.ok) { $('#admin-status').textContent = 'No se pudo duplicar'; return; } await loadData(); renderShell(); state.admin = true; };
+  $('#save-record').onclick = async () => { try { const row = JSON.parse(editor.value); const type = entity.value; const id = row['🔒 Row ID']; const response = await fetch(`/api/admin/${type}${selected === null ? '' : `/${encodeURIComponent(id)}`}`, { method: selected === null ? 'POST' : 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) }); if (!response.ok) throw new Error((await response.json()).error); await loadData(); renderShell(); state.admin = true; } catch (error) { $('#admin-status').textContent = error.message; } };
+  $('#delete-record').onclick = async () => { if (selected === null || !confirm('¿Borrar este registro?')) return; const row = data[entity.value][selected]; await fetch(`/api/admin/${entity.value}/${encodeURIComponent(row['🔒 Row ID'])}`, { method: 'DELETE' }); await loadData(); renderShell(); state.admin = true; };
   $('#import-json').onclick = () => $('#json-file').click();
-  $('#json-file').onchange = async event => { const file = event.target.files?.[0]; if (!file) return; try { const payload = JSON.parse(await file.text()); const response = await fetch('/api/admin/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); if (!response.ok) throw new Error((await response.json()).error || 'No se pudo importar el JSON'); await loadData(); render(); admin = true; renderAdmin(); } catch (error) { $('#admin-status').textContent = error.message; } finally { event.target.value = ''; } };
-  $('#logout').onclick = async () => { await fetch('/api/auth/logout', { method: 'POST' }); admin = false; render(); };
+  $('#json-file').onchange = async event => { const file = event.target.files?.[0]; if (!file) return; try { const payload = JSON.parse(await file.text()); const response = await fetch('/api/admin/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); if (!response.ok) throw new Error((await response.json()).error || 'No se pudo importar el JSON'); await loadData(); renderShell(); state.admin = true; } catch (error) { $('#admin-status').textContent = error.message; } finally { event.target.value = ''; } };
+  $('#logout').onclick = async () => { await fetch('/api/auth/logout', { method: 'POST' }); state.admin = false; renderShell(); };
 }
 
 const params = new URLSearchParams(location.search);
-async function loadAuth() { const response = await fetch('/api/auth/me').catch(() => null); if (!response?.ok) return; const result = await response.json(); admin = Boolean(result.user) || params.get('admin') === '1'; }
-loadData().then(async () => { await loadAuth(); render(); if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+async function loadAuth() { const response = await fetch('/api/auth/me').catch(() => null); if (!response?.ok) return; const result = await response.json(); state.admin = Boolean(result.user) || params.get('admin') === '1'; }
+loadData().then(async () => { await loadAuth(); renderShell(); if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {}); });
