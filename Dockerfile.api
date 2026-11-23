@@ -5,6 +5,7 @@ RUN npm ci --omit=dev
 COPY server ./server
 COPY public/data ./public/data
 COPY Entradas.csv ./Entradas.csv
+COPY Users.csv ./Users.csv
 ENV NODE_ENV=production
 EXPOSE 3000
 CMD ["node", "server/index.js"]

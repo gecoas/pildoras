@@ -95,7 +95,7 @@ function headerCategories() {
 function renderHome() {
   const rows = filteredEntries();
   const start = (state.page - 1) * 12;
-  return `<section class="hero"><div class="hero-copy"><span class="overline">RECURSOS PARA PROFESORES</span><h1>Ideas que <em>inspiran</em><br>tu aula.</h1><p>${esc(data.site['Mensaje inicial'] || 'Descubre herramientas, ideas y recursos para transformar tus clases.')}</p><div class="hero-actions"><button class="subscribe">♡ Suscribirme</button><div class="search-field"><span>⌕</span><input id="search" value="${esc(state.query)}" placeholder="${esc(data.site['Texto a buscar'] || 'Buscar')}"><kbd>⌘ K</kbd></div></div></div>${headerCategories()}</section><section class="section-block home-entries"><div class="section-heading"><div><span class="overline">LA BIBLIOTECA</span><h2>Entradas</h2><p class="muted">${rows.length} recursos para inspirarte</p></div><button class="text-link" data-view="entries">Ver lista <span>→</span></button></div><div class="card-grid">${rows.slice(start, start + 12).map(card).join('') || '<div class="empty">No encontramos recursos con esos filtros.</div>'}</div>${pagination(rows.length)}</section>`;
+  return `<section class="hero"><div class="hero-copy"><span class="overline">RECURSOS PARA PROFESORES</span><h1>Ideas que <em>inspiran</em><br>tu aula.</h1><p>${esc(data.site['Mensaje inicial'] || 'Descubre herramientas, ideas y recursos para transformar tus clases.')}</p><div class="hero-actions"><button class="subscribe" id="subscribe">${state.user?.subscribed ? '✓ Suscrito' : '♡ Suscribirme'}</button><div class="search-field"><span>⌕</span><input id="search" value="${esc(state.query)}" placeholder="${esc(data.site['Texto a buscar'] || 'Buscar')}"><kbd>⌘ K</kbd></div></div></div>${headerCategories()}</section><section class="section-block home-entries"><div class="section-heading"><div><span class="overline">LA BIBLIOTECA</span><h2>Entradas</h2><p class="muted">${rows.length} recursos para inspirarte</p></div><button class="text-link" data-view="entries">Ver lista <span>→</span></button></div><div class="card-grid">${rows.slice(start, start + 12).map(card).join('') || '<div class="empty">No encontramos recursos con esos filtros.</div>'}</div>${pagination(rows.length)}</section>`;
 }
 
 function renderEntries() {
@@ -135,7 +135,16 @@ function bindInteractions() {
   document.querySelector('[data-clear-author]')?.addEventListener('click', () => { state.author = ''; renderShell(); });
   const search = $('#search');
   if (search) { search.oninput = event => { state.query = event.target.value; state.page = 1; renderShell(); $('#search')?.focus(); $('#search')?.setSelectionRange(state.query.length, state.query.length); }; search.onkeydown = event => { if (event.key === 'Enter') { state.view = 'entries'; renderShell(); } }; }
-  document.querySelectorAll('#admin-login, .plain-link').forEach(button => button.onclick = () => { if (state.admin && button.id === 'admin-login') openEntryForm(); else window.location.href = '/api/auth/login'; });
+  document.querySelectorAll('#admin-login').forEach(button => button.onclick = () => state.admin ? openEntryForm() : (window.location.href = '/api/auth/login?mode=login'));
+  document.querySelector('.plain-link')?.addEventListener('click', () => { window.location.href = '/api/auth/login?mode=login'; });
+  document.querySelector('.signup')?.addEventListener('click', () => { window.location.href = '/api/auth/login?mode=register'; });
+  document.querySelector('#subscribe')?.addEventListener('click', async () => {
+    if (!state.user) { window.location.href = '/api/auth/login?mode=register'; return; }
+    const response = await fetch('/api/account/subscription', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscribed: !state.user.subscribed }) });
+    if (!response.ok) return;
+    state.user = (await response.json()).user;
+    renderShell();
+  });
   document.querySelector('#logout')?.addEventListener('click', async () => { await fetch('/api/auth/logout', { method: 'POST' }); state.admin = false; state.user = null; renderShell(); });
   document.querySelector('#add-category')?.addEventListener('click', () => state.admin ? openCategoryForm() : (window.location.href = '/api/auth/login'));
   document.querySelector('#add-author')?.addEventListener('click', () => state.admin ? openAuthorForm() : (window.location.href = '/api/auth/login'));
@@ -228,5 +237,5 @@ async function renderAdmin() {
   $('#logout').onclick = async () => { await fetch('/api/auth/logout', { method: 'POST' }); state.admin = false; renderShell(); };
 }
 
-async function loadAuth() { const response = await fetch('/api/auth/me').catch(() => null); if (!response?.ok) return; const result = await response.json(); state.user = result.user || null; state.admin = Boolean(result.user); }
+async function loadAuth() { const response = await fetch('/api/auth/me').catch(() => null); if (!response?.ok) return; const result = await response.json(); state.user = result.user || null; state.admin = result.user?.role === 'admin'; }
 loadData().then(async () => { await loadAuth(); renderShell(); if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {}); });

@@ -42,19 +42,34 @@ export function createApp({ pool, oauthClient = new OAuth2Client(process.env.GOO
   };
   app.get('/api/data', publicData);
   for (const type of Object.keys(TYPES)) app.get(`/api/${type}`, async (req, res, next) => { try { res.json(normalizeRows((await pool.query(publicTableQuery(TYPES[type], type))).rows)); } catch (e) { next(e); } });
-  app.get('/api/auth/login', (req, res, next) => { const state = randomUUID(); req.session.oauthState = state; req.session.save(error => { if (error) return next(error); res.redirect(oauthClient.generateAuthUrl({ access_type: 'offline', scope: ['openid', 'email', 'profile'], prompt: 'select_account', state })); }); });
+  app.get('/api/auth/login', (req, res, next) => { const state = randomUUID(); req.session.oauthState = state; req.session.authMode = req.query.mode === 'register' ? 'register' : 'login'; req.session.save(error => { if (error) return next(error); res.redirect(oauthClient.generateAuthUrl({ access_type: 'offline', scope: ['openid', 'email', 'profile'], prompt: 'select_account', state })); }); });
   app.get('/api/auth/callback', async (req, res, next) => { try {
     if (!req.query.state || req.query.state !== req.session.oauthState) return res.status(400).send('Estado OAuth inválido');
     delete req.session.oauthState;
     const { tokens } = await oauthClient.getToken(String(req.query.code || ''));
     const ticket = await oauthClient.verifyIdToken({ idToken: tokens.id_token, audience: process.env.GOOGLE_CLIENT_ID });
     const profile = ticket.getPayload();
-    if (!isAdmin(profile)) return res.status(403).send('Cuenta no autorizada');
-    req.session.user = { email: profile.email, name: profile.name, picture: profile.picture };
+    const email = String(profile.email || '').toLowerCase();
+    const existing = await pool.query('SELECT email, name, photo, role, subscribed FROM users WHERE email = $1', [email]);
+    if (!existing.rowCount && req.session.authMode !== 'register') return res.status(403).send('Usuario no registrado');
+    const user = existing.rows[0] || (await pool.query('INSERT INTO users (email, name, photo) VALUES ($1, $2, $3) RETURNING email, name, photo, role, subscribed', [email, profile.name || '', profile.picture || ''])).rows[0];
+    req.session.user = { email: user.email, name: user.name, picture: user.photo, role: user.role, subscribed: user.subscribed };
+    delete req.session.authMode;
     res.redirect('/?admin=1');
   } catch (e) { next(e); } });
   app.post('/api/auth/logout', (req, res) => req.session.destroy(() => res.status(204).end()));
   app.get('/api/auth/me', (req, res) => res.json({ user: req.session.user || null }));
+  app.post('/api/account/subscription', async (req, res, next) => {
+    if (!req.session.user?.email) return res.status(401).json({ error: 'Inicia sesión para suscribirte' });
+    try {
+      const subscribed = Boolean(req.body?.subscribed);
+      const result = await pool.query('UPDATE users SET subscribed = $1, updated_at = now() WHERE email = $2 RETURNING email, name, photo, role, subscribed', [subscribed, req.session.user.email]);
+      if (!result.rowCount) return res.status(404).json({ error: 'Usuario no encontrado' });
+      const user = result.rows[0];
+      req.session.user = { email: user.email, name: user.name, picture: user.photo, role: user.role, subscribed: user.subscribed };
+      res.json({ user: req.session.user });
+    } catch (error) { next(error); }
+  });
   const requireAdmin = (req, res, next) => req.session.user && isAdmin({ ...req.session.user, email_verified: true }) ? next() : res.status(401).json({ error: 'Autenticación de administrador requerida' });
   const validType = (req, res, next) => TYPES[req.params.type] ? next() : res.status(404).json({ error: 'Entidad desconocida' });
 
