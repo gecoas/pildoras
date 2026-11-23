@@ -51,8 +51,13 @@ export function createApp({ pool, oauthClient = new OAuth2Client(process.env.GOO
     const profile = ticket.getPayload();
     const email = String(profile.email || '').toLowerCase();
     const existing = await pool.query('SELECT email, name, photo, role, subscribed FROM users WHERE email = $1', [email]);
-    if (!existing.rowCount && req.session.authMode !== 'register') return res.status(403).send('Usuario no registrado');
-    const user = existing.rows[0] || (await pool.query('INSERT INTO users (email, name, photo) VALUES ($1, $2, $3) RETURNING email, name, photo, role, subscribed', [email, profile.name || '', profile.picture || ''])).rows[0];
+    const admin = isAdmin(profile);
+    if (!existing.rowCount && req.session.authMode !== 'register' && !admin) return res.status(403).send('Usuario no registrado');
+    const user = existing.rows[0] || (await pool.query('INSERT INTO users (email, name, photo, role) VALUES ($1, $2, $3, $4) RETURNING email, name, photo, role, subscribed', [email, profile.name || '', profile.picture || '', admin ? 'admin' : 'user'])).rows[0];
+    if (admin && user.role !== 'admin') {
+      user.role = 'admin';
+      await pool.query('UPDATE users SET role = $1, updated_at = now() WHERE email = $2', ['admin', email]);
+    }
     req.session.user = { email: user.email, name: user.name, picture: user.photo, role: user.role, subscribed: user.subscribed };
     delete req.session.authMode;
     res.redirect('/?admin=1');
