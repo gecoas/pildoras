@@ -18,6 +18,10 @@ async function loadData() {
     const response = await fetch('/api/data');
     if (!response.ok) throw new Error();
     data = await response.json();
+    if (state.admin) {
+      const entries = await fetch('/api/admin/entries');
+      if (entries.ok) data.entries = await entries.json();
+    }
   } catch { data = fallback; }
 }
 
@@ -45,6 +49,8 @@ function authorName(email) {
 }
 
 function publishedEntries() { return data.entries.filter(entry => /publicad/i.test(entry.Estado || '')); }
+
+function entryStatus(entry) { return /publicad/i.test(entry.Estado || '') ? 'published' : /programad/i.test(entry.Estado || '') ? 'scheduled' : 'draft'; }
 
 function filteredEntries() {
   const query = state.query.toLocaleLowerCase('es');
@@ -74,7 +80,7 @@ function card(entry) {
 }
 
 function listRow(entry) {
-  return `<div class="entry-row" data-entry="${esc(entry['🔒 Row ID'])}">${thumbnail(entry)}<span class="row-copy"><span class="date">${esc(dateText(entry['Fecha creación'], true))}</span><strong>${esc(entry.Título)}</strong><span class="row-meta">${esc(authorName(entry['Autor Email']))} · ${categoryNames(entry).map(esc).join(', ')}</span></span>${state.admin ? `<button class="row-action" data-edit-entry="${esc(entry['🔒 Row ID'])}" aria-label="Editar entrada">···</button>` : '<span class="chevron">›</span>'}</div>`;
+  return `<div class="entry-row" data-entry="${esc(entry['🔒 Row ID'])}">${thumbnail(entry)}<span class="row-copy"><span class="date">${esc(dateText(entry['Fecha creación'], true))}</span><strong>${esc(entry.Título)} <span class="status-dot ${entryStatus(entry)}" title="${esc(entry.Estado || 'borrador')}"></span></strong><span class="row-meta">${esc(authorName(entry['Autor Email']))} · ${categoryNames(entry).map(esc).join(', ')}</span></span>${state.admin ? `<button class="row-action" data-entry-menu="${esc(entry['🔒 Row ID'])}" aria-label="Menú de entrada">···</button><div class="entry-menu" data-menu-for="${esc(entry['🔒 Row ID'])}"><button data-entry-action="edit" data-entry-id="${esc(entry['🔒 Row ID'])}">Editar entrada</button><button data-entry-action="schedule" data-entry-id="${esc(entry['🔒 Row ID'])}">Programar entrada</button><button data-entry-action="publish" data-entry-id="${esc(entry['🔒 Row ID'])}">Publicar entrada</button><button data-entry-action="delete" data-entry-id="${esc(entry['🔒 Row ID'])}">Borrar entrada</button></div>` : '<span class="chevron">›</span>'}</div>`;
 }
 
 function pagination(total, perPage = 12) {
@@ -101,7 +107,9 @@ function renderHome() {
 function renderEntries() {
   const rows = filteredEntries();
   const start = (state.page - 1) * 24;
-  return `<section class="page-heading"><div><span class="overline">BIBLIOTECA DE RECURSOS</span><h1>Entradas publicadas</h1><p class="muted">Consulta y descubre todas las píldoras de innovación.</p></div><div class="page-actions"><button class="primary" id="admin-login">+ Añade Entrada</button>${state.admin ? '<button class="secondary" id="import-json">Importar JSON</button><input id="json-file" type="file" accept="application/json,.json" hidden>' : ''}</div></section><div class="toolbar"><div class="search-field compact"><span>⌕</span><input id="search" value="${esc(state.query)}" placeholder="Buscar"></div><div class="filter-pills"><button class="pill-button ${state.category === 'Todas' ? 'selected' : ''}" data-category="Todas">Todas</button>${data.categories.map(category => `<button class="pill-button ${state.category === category.Categoría ? 'selected' : ''}" data-category="${esc(category.Categoría)}">${esc(category.Categoría)}</button>`).join('')}</div></div><div class="entry-list">${rows.slice(start, start + 24).map(listRow).join('') || '<div class="empty">No encontramos entradas.</div>'}</div>${pagination(rows.length, 24)}`;
+  const pending = state.admin ? data.entries.filter(entry => entryStatus(entry) !== 'published').sort((a, b) => dateOf(b['Fecha creación']) - dateOf(a['Fecha creación'])) : [];
+  const pendingSection = state.admin ? `<section class="pending-section"><div class="section-heading"><div><span class="overline">REVISIÓN</span><h2>Entradas pendientes</h2></div><span class="pending-count">${pending.length}</span></div><div class="entry-list">${pending.map(listRow).join('') || '<div class="empty">No hay borradores pendientes.</div>'}</div></section>` : '';
+  return `${pendingSection}<section class="page-heading"><div><span class="overline">BIBLIOTECA DE RECURSOS</span><h1>Entradas publicadas</h1><p class="muted">Consulta y descubre todas las píldoras de innovación.</p></div><div class="page-actions"><button class="primary" id="admin-login">+ Añade Entrada</button>${state.admin ? '<button class="secondary" id="import-json">Importar JSON</button><input id="json-file" type="file" accept="application/json,.json" hidden>' : ''}</div></section><div class="toolbar"><div class="search-field compact"><span>⌕</span><input id="search" value="${esc(state.query)}" placeholder="Buscar"></div><div class="filter-pills"><button class="pill-button ${state.category === 'Todas' ? 'selected' : ''}" data-category="Todas">Todas</button>${data.categories.map(category => `<button class="pill-button ${state.category === category.Categoría ? 'selected' : ''}" data-category="${esc(category.Categoría)}">${esc(category.Categoría)}</button>`).join('')}</div></div><div class="entry-list">${rows.slice(start, start + 24).map(listRow).join('') || '<div class="empty">No encontramos entradas.</div>'}</div>${pagination(rows.length, 24)}`;
 }
 
 function renderCategories() {
@@ -130,7 +138,17 @@ function bindInteractions() {
   document.querySelectorAll('[data-delete-category]').forEach(button => button.onclick = async event => { event.stopPropagation(); if (!confirm('¿Eliminar esta categoría?')) return; const response = await fetch(`/api/admin/categories/${encodeURIComponent(button.dataset.deleteCategory)}`, { method: 'DELETE' }); if (!response.ok) return; await loadData(); renderShell(); });
   document.querySelectorAll('[data-page]').forEach(button => button.onclick = () => { if (!button.disabled) { state.page = Number(button.dataset.page); renderShell(); } });
   document.querySelectorAll('[data-entry]').forEach(button => button.onclick = () => openEntry(filteredEntries().find(entry => entry['🔒 Row ID'] === button.dataset.entry) || data.entries.find(entry => entry['🔒 Row ID'] === button.dataset.entry)));
-  document.querySelectorAll('[data-edit-entry]').forEach(button => button.onclick = event => { event.stopPropagation(); openEntryForm(data.entries.find(entry => entry['🔒 Row ID'] === button.dataset.editEntry)); });
+  document.querySelectorAll('[data-entry-menu]').forEach(button => button.onclick = event => { event.stopPropagation(); button.closest('.entry-row').classList.toggle('menu-open'); });
+  document.querySelectorAll('[data-entry-action]').forEach(button => button.onclick = async event => {
+    event.stopPropagation();
+    const entry = data.entries.find(item => item['🔒 Row ID'] === button.dataset.entryId);
+    if (!entry) return;
+    const action = button.dataset.entryAction;
+    if (action === 'edit') openEntryForm(entry);
+    if (action === 'schedule') openEntryForm({ ...entry, Estado: 'programada' });
+    if (action === 'publish') { await updateEntryStatus(entry, 'publicada'); }
+    if (action === 'delete' && confirm('¿Borrar esta entrada?')) { await fetch(`/api/admin/entries/${encodeURIComponent(entry['🔒 Row ID'])}`, { method: 'DELETE' }); await loadData(); renderShell(); }
+  });
   document.querySelectorAll('[data-author]').forEach(button => button.onclick = () => { state.author = button.dataset.author; state.view = 'authors'; state.page = 1; renderShell(); });
   document.querySelector('[data-clear-author]')?.addEventListener('click', () => { state.author = ''; renderShell(); });
   const search = $('#search');
@@ -174,6 +192,11 @@ function openEntry(entry) {
   modal.querySelectorAll('[data-entry]').forEach(button => button.onclick = () => { modal.remove(); openEntry(related.find(item => item['🔒 Row ID'] === button.dataset.entry)); });
 }
 
+async function updateEntryStatus(entry, status) {
+  const response = await fetch(`/api/admin/entries/${encodeURIComponent(entry['🔒 Row ID'])}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...entry, Estado: status }) });
+  if (response.ok) { await loadData(); renderShell(); }
+}
+
 function formModal(title, body, onSubmit) {
   const modal = document.createElement('div');
   modal.className = 'modal form-modal';
@@ -187,9 +210,9 @@ function formModal(title, body, onSubmit) {
 function openEntryForm(entry = {}) {
   const editing = Boolean(entry['🔒 Row ID']);
   const selected = String(entry.Categorías || '').split(',').filter(Boolean);
-  const body = `<p class="required">Categorías <span>Requerido</span></p><div class="category-choices">${data.categories.map(category => `<label class="choice"><input type="checkbox" name="category" value="${esc(category['🔒 Row ID'])}" ${selected.includes(category['🔒 Row ID']) ? 'checked' : ''}><span class="category-dot ${categoryClasses[category.Categoría] || 'app'}"></span>${esc(category.Categoría)}</label>`).join('')}</div><label>Título<input name="Título" required value="${esc(entry.Título)}"></label><label>Texto<textarea name="Texto" required>${esc(entry.Texto)}</textarea></label><label>Enlace<input name="Enlace" type="url" value="${esc(entry.Enlace)}"></label><label>Imagen<input name="Imagen" type="url" value="${esc(entry.Imagen)}" placeholder="https://..."></label><label>Archivo<input name="Archivo" type="url" value="${esc(entry.Archivo)}" placeholder="https://..."></label><label>Tiempo de lectura<input name="Tiempo de lectura" inputmode="numeric" value="${esc(entry['Tiempo de lectura'])}" placeholder="en minutos"></label><label>Fecha creación<input name="Fecha creación" value="${esc(entry['Fecha creación'] || new Date().toLocaleString('es-ES'))}"></label>${editing ? '<button class="delete-link" type="button" data-delete-entry>Borrar entrada</button>' : ''}`;
+  const body = `<p class="required">Categorías <span>Requerido</span></p><div class="category-choices">${data.categories.map(category => `<label class="choice"><input type="checkbox" name="category" value="${esc(category['🔒 Row ID'])}" ${selected.includes(category['🔒 Row ID']) ? 'checked' : ''}><span class="category-dot ${categoryClasses[category.Categoría] || 'app'}"></span>${esc(category.Categoría)}</label>`).join('')}</div><label>Título<input name="Título" required value="${esc(entry.Título)}"></label><label>Texto<textarea name="Texto" required>${esc(entry.Texto)}</textarea></label><label>Enlace<input name="Enlace" type="url" value="${esc(entry.Enlace)}"></label><label>Imagen<input name="Imagen" type="url" value="${esc(entry.Imagen)}" placeholder="https://..."></label><label>Archivo<input name="Archivo" type="url" value="${esc(entry.Archivo)}" placeholder="https://..."></label><label>Tiempo de lectura<input name="Tiempo de lectura" inputmode="numeric" value="${esc(entry['Tiempo de lectura'])}" placeholder="en minutos"></label><label>Fecha creación<input name="Fecha creación" value="${esc(entry['Fecha creación'] || new Date().toLocaleString('es-ES'))}"></label><label>Estado<select name="Estado"><option value="borrador" ${entry.Estado === 'borrador' || !entry.Estado ? 'selected' : ''}>Borrador</option><option value="programada" ${entry.Estado === 'programada' ? 'selected' : ''}>Programada</option><option value="publicada" ${/publicad/i.test(entry.Estado || '') ? 'selected' : ''}>Publicada</option></select></label>${editing ? '<button class="delete-link" type="button" data-delete-entry>Borrar entrada</button>' : ''}`;
   const modal = formModal(editing ? 'Editar Entrada' : 'Añade Entrada', body, async form => {
-    const row = { ...entry, '🔒 Row ID': entry['🔒 Row ID'], 'Fecha creación': form.get('Fecha creación'), Título: form.get('Título'), 'Autor Email': editing ? entry['Autor Email'] : state.user.email, Texto: form.get('Texto'), Enlace: form.get('Enlace'), Imagen: form.get('Imagen'), Archivo: form.get('Archivo'), 'Tiempo de lectura': form.get('Tiempo de lectura'), Categorías: form.getAll('category').join(','), Estado: entry.Estado || 'publicada' };
+    const row = { ...entry, '🔒 Row ID': entry['🔒 Row ID'], 'Fecha creación': form.get('Fecha creación'), Título: form.get('Título'), 'Autor Email': editing ? entry['Autor Email'] : state.user.email, Texto: form.get('Texto'), Enlace: form.get('Enlace'), Imagen: form.get('Imagen'), Archivo: form.get('Archivo'), 'Tiempo de lectura': form.get('Tiempo de lectura'), Categorías: form.getAll('category').join(','), Estado: form.get('Estado') || 'borrador' };
     const response = await fetch(`/api/admin/entries${editing ? `/${encodeURIComponent(entry['🔒 Row ID'])}` : ''}`, { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) });
     if (!response.ok) throw new Error((await response.json()).error || 'No se pudo guardar la entrada');
   });
@@ -238,4 +261,4 @@ async function renderAdmin() {
 }
 
 async function loadAuth() { const response = await fetch('/api/auth/me').catch(() => null); if (!response?.ok) return; const result = await response.json(); state.user = result.user || null; state.admin = result.user?.role === 'admin'; }
-loadData().then(async () => { await loadAuth(); renderShell(); if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+loadAuth().then(async () => { await loadData(); renderShell(); if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {}); });
