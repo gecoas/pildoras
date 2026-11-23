@@ -4,10 +4,13 @@ import pgSession from 'connect-pg-simple';
 import helmet from 'helmet';
 import { OAuth2Client } from 'google-auth-library';
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { TYPES, getId, normalizeRows } from './data.js';
 
 const PgStore = pgSession(session);
-const jsonLimit = '2mb';
+const jsonLimit = '12mb';
+const uploadRoot = '/app/uploads';
 const asList = value => String(value || '').split(',').map(x => x.trim()).filter(Boolean);
 const allowedDomains = () => asList(process.env.GOOGLE_ALLOWED_DOMAINS || 'alcaste-lasfuentes.com,gecoas.com');
 const adminEmails = () => asList(process.env.ADMIN_EMAILS || 'gbailly@alcaste-lasfuentes.com').map(x => x.toLowerCase());
@@ -27,6 +30,7 @@ export function createApp({ pool, oauthClient = new OAuth2Client(process.env.GOO
   app.set('trust proxy', 1);
   app.use(helmet({ contentSecurityPolicy: false }));
   app.use(express.json({ limit: jsonLimit }));
+  app.use('/uploads', express.static(uploadRoot));
   app.use(session({
     store: new PgStore({ pool, createTableIfMissing: true }),
     secret: process.env.SESSION_SECRET || 'development-only-change-me',
@@ -79,6 +83,22 @@ export function createApp({ pool, oauthClient = new OAuth2Client(process.env.GOO
   const validType = (req, res, next) => TYPES[req.params.type] ? next() : res.status(404).json({ error: 'Entidad desconocida' });
 
   app.use('/api/admin', requireAdmin);
+  app.post('/api/admin/uploads', async (req, res, next) => {
+    try {
+      const match = String(req.body?.data || '').match(/^data:([^;]+);base64,(.+)$/);
+      if (!match) return res.status(400).json({ error: 'Archivo inválido' });
+      const [, type, encoded] = match;
+      if (!/^(image\/|application\/pdf$|application\/msword$|application\/vnd\.|text\/)/.test(type)) return res.status(415).json({ error: 'Tipo de archivo no permitido' });
+      const content = Buffer.from(encoded, 'base64');
+      if (content.length > 10 * 1024 * 1024) return res.status(413).json({ error: 'El archivo supera los 10 MB' });
+      const extensions = { 'application/pdf': 'pdf', 'application/msword': 'doc', 'text/plain': 'txt' };
+      const extension = extensions[type] || type.split('/')[1].split('+')[0].replace(/[^a-z0-9]/gi, '') || 'bin';
+      await fs.mkdir(uploadRoot, { recursive: true });
+      const filename = `${randomUUID()}.${extension}`;
+      await fs.writeFile(path.join(uploadRoot, filename), content);
+      res.status(201).json({ url: `/uploads/${filename}` });
+    } catch (error) { next(error); }
+  });
   app.get('/api/admin/:type', validType, async (req, res, next) => { try { res.json(normalizeRows((await pool.query(`SELECT id, data FROM ${TYPES[req.params.type]} ORDER BY updated_at DESC`)).rows)); } catch (e) { next(e); } });
   app.post('/api/admin/:type', validType, async (req, res, next) => { try { const id = getId(req.body); const row = { ...req.body, '🔒 Row ID': req.body['🔒 Row ID'] || id }; await pool.query(`INSERT INTO ${TYPES[req.params.type]} (id, data) VALUES ($1, $2)`, [id, row]); res.status(201).json(row); } catch (e) { next(e); } });
   app.put('/api/admin/:type/:id', validType, async (req, res, next) => { try { const row = { ...req.body, '🔒 Row ID': req.body['🔒 Row ID'] || req.params.id }; const result = await pool.query(`UPDATE ${TYPES[req.params.type]} SET data = $1, updated_at = now() WHERE id = $2 RETURNING id, data`, [row, req.params.id]); if (!result.rowCount) return res.status(404).json({ error: 'No encontrado' }); res.json(normalizeRows(result.rows)[0]); } catch (e) { next(e); } });
