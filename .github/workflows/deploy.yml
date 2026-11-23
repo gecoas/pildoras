@@ -173,6 +173,10 @@ jobs:
             npm ci
             npm run build
             test -f dist/index.html
+            echo "Puertos TCP escuchando en produccion:"
+            ss -ltnp || true
+            echo "Contenedores Docker y puertos publicados:"
+            docker ps --format 'table {{.Names}}\t{{.Ports}}' || true
             if ss -ltnH 'sport = :8089' | grep -q .; then
               echo "El puerto 8089 ya esta ocupado en produccion" >&2
               exit 1
