@@ -42,7 +42,7 @@ services:
     container_name: pildoras
     restart: unless-stopped
     ports:
-      - "8089:80"
+      - "8090:80"
     depends_on:
       - api
 
