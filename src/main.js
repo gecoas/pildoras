@@ -11,7 +11,7 @@ const categoryIcons = { App: '▣', IA: '✦', Web: '⌁', Documento: '▤' };
 const categoryClasses = { App: 'app', IA: 'ia', Web: 'web', Documento: 'documento' };
 const typeLabels = { entries: 'Entradas', authors: 'Autores', categories: 'Categorías' };
 let data = fallback;
-let state = { view: 'home', query: '', category: 'Todas', author: '', page: 1, admin: false };
+let state = { view: 'home', query: '', category: 'Todas', author: '', page: 1, admin: false, user: null };
 
 async function loadData() {
   try {
@@ -60,7 +60,7 @@ function categoryPills(entry) { return categoryNames(entry).map(name => `<span c
 function categoryArtwork(category) {
   const name = category.Categoría || 'Recurso';
   const kind = categoryClasses[name] || 'app';
-  return `<div class="category-art ${kind}">${category.Imagen || category.Logo ? `<img src="${esc(category.Imagen || category.Logo)}" alt="" onerror="this.style.display='none'">` : `<span>${categoryIcons[name] || '✦'}</span>`}</div>`;
+  return `<div class="category-art ${kind}">${category.Imagen || category.Logo || category['Logo categoría'] ? `<img src="${esc(category.Imagen || category.Logo || category['Logo categoría'])}" alt="" onerror="this.style.display='none'">` : `<span>${categoryIcons[name] || '✦'}</span>`}</div>`;
 }
 
 function thumbnail(entry, large = false) {
@@ -74,7 +74,7 @@ function card(entry) {
 }
 
 function listRow(entry) {
-  return `<button class="entry-row" data-entry="${esc(entry['🔒 Row ID'])}">${thumbnail(entry)}<span class="row-copy"><span class="date">${esc(dateText(entry['Fecha creación'], true))}</span><strong>${esc(entry.Título)}</strong><span class="row-meta">${esc(authorName(entry['Autor Email']))} · ${categoryNames(entry).map(esc).join(', ')}</span></span><span class="chevron">›</span></button>`;
+  return `<div class="entry-row" data-entry="${esc(entry['🔒 Row ID'])}">${thumbnail(entry)}<span class="row-copy"><span class="date">${esc(dateText(entry['Fecha creación'], true))}</span><strong>${esc(entry.Título)}</strong><span class="row-meta">${esc(authorName(entry['Autor Email']))} · ${categoryNames(entry).map(esc).join(', ')}</span></span>${state.admin ? `<button class="row-action" data-edit-entry="${esc(entry['🔒 Row ID'])}" aria-label="Editar entrada">···</button>` : '<span class="chevron">›</span>'}</div>`;
 }
 
 function pagination(total, perPage = 12) {
@@ -85,7 +85,7 @@ function pagination(total, perPage = 12) {
 }
 
 function categoryCollection() {
-  return `<div class="category-grid">${data.categories.map(category => `<button class="category-tile" data-category-view="${esc(category.Categoría)}">${categoryArtwork(category)}<strong>${esc(category.Categoría)}</strong><span>${publishedEntries().filter(entry => categoryNames(entry).includes(category.Categoría)).length} entradas</span></button>`).join('')}</div>`;
+  return `<div class="category-grid">${data.categories.map(category => `<div class="category-tile" data-category-view="${esc(category.Categoría)}" role="button" tabindex="0">${categoryArtwork(category)}<strong>${esc(category.Categoría)}</strong><span>${publishedEntries().filter(entry => categoryNames(entry).includes(category.Categoría)).length} entradas</span>${state.admin ? `<div class="category-actions"><button data-edit-category="${esc(category['🔒 Row ID'])}">Editar</button><button data-delete-category="${esc(category['🔒 Row ID'])}">Eliminar</button></div>` : ''}</div>`).join('')}</div>`;
 }
 
 function renderHome() {
@@ -97,37 +97,46 @@ function renderHome() {
 function renderEntries() {
   const rows = filteredEntries();
   const start = (state.page - 1) * 24;
-  return `<section class="page-heading"><div><span class="overline">BIBLIOTECA DE RECURSOS</span><h1>Entradas publicadas</h1><p class="muted">Consulta y descubre todas las píldoras de innovación.</p></div><button class="primary" id="admin-login">+ Añade Entrada</button></section><div class="toolbar"><div class="search-field compact"><span>⌕</span><input id="search" value="${esc(state.query)}" placeholder="Buscar"></div><div class="filter-pills"><button class="pill-button ${state.category === 'Todas' ? 'selected' : ''}" data-category="Todas">Todas</button>${data.categories.map(category => `<button class="pill-button ${state.category === category.Categoría ? 'selected' : ''}" data-category="${esc(category.Categoría)}">${esc(category.Categoría)}</button>`).join('')}</div></div><div class="entry-list">${rows.slice(start, start + 24).map(listRow).join('') || '<div class="empty">No encontramos entradas.</div>'}</div>${pagination(rows.length, 24)}`;
+  return `<section class="page-heading"><div><span class="overline">BIBLIOTECA DE RECURSOS</span><h1>Entradas publicadas</h1><p class="muted">Consulta y descubre todas las píldoras de innovación.</p></div><div class="page-actions"><button class="primary" id="admin-login">+ Añade Entrada</button>${state.admin ? '<button class="secondary" id="import-json">Importar JSON</button><input id="json-file" type="file" accept="application/json,.json" hidden>' : ''}</div></section><div class="toolbar"><div class="search-field compact"><span>⌕</span><input id="search" value="${esc(state.query)}" placeholder="Buscar"></div><div class="filter-pills"><button class="pill-button ${state.category === 'Todas' ? 'selected' : ''}" data-category="Todas">Todas</button>${data.categories.map(category => `<button class="pill-button ${state.category === category.Categoría ? 'selected' : ''}" data-category="${esc(category.Categoría)}">${esc(category.Categoría)}</button>`).join('')}</div></div><div class="entry-list">${rows.slice(start, start + 24).map(listRow).join('') || '<div class="empty">No encontramos entradas.</div>'}</div>${pagination(rows.length, 24)}`;
 }
 
 function renderCategories() {
-  return `<section class="page-heading"><div><span class="overline">DESCUBRE NUEVOS TEMAS</span><h1>Categorías</h1><p class="muted">Encuentra recursos agrupados por temática.</p></div><button class="primary" id="admin-login">+ Añadir</button></section><section class="category-page-grid">${categoryCollection()}</section>`;
+  return `<section class="page-heading"><div><span class="overline">DESCUBRE NUEVOS TEMAS</span><h1>Categorías</h1><p class="muted">Encuentra recursos agrupados por temática.</p></div><button class="primary" id="add-category">+ Añadir</button></section><section class="category-page-grid">${categoryCollection()}</section>`;
 }
 
 function renderAuthors() {
   const authorEntries = state.author ? filteredEntries() : [];
-  return `<section class="page-heading centered"><div><p class="help">Pulsa ⚙️ para filtrar las publicaciones del Autor</p><h1>Autores</h1></div><button class="primary" id="admin-login">+ Añade Autor</button></section><div class="authors-grid">${data.authors.map(author => { const email = author['email Autor']; return `<article class="author-card"><div class="avatar">${esc(authorName(email).slice(0, 1))}</div><strong>${esc(authorName(email))}</strong><span>${esc(email)}</span><button class="author-filter ${state.author === email ? 'selected' : ''}" data-author="${esc(email)}">${state.author === email ? 'Publicaciones' : '⚙️'}</button></article>`; }).join('')}</div>${state.author ? `<section class="author-results"><div class="section-heading"><div><span class="overline">PUBLICACIONES DE AUTOR</span><h2>${esc(authorName(state.author))}</h2></div><button class="text-link" data-clear-author>Limpiar filtro</button></div><div class="entry-list">${authorEntries.map(listRow).join('') || '<div class="empty">Este autor todavía no tiene publicaciones.</div>'}</div></section>` : ''}`;
+  return `<section class="page-heading centered"><div><p class="help">Pulsa ⚙️ para filtrar las publicaciones del Autor</p><h1>Autores</h1></div><button class="primary" id="add-author">+ Añade Autor</button></section><div class="authors-grid">${data.authors.map(author => { const email = author['email Autor']; return `<article class="author-card"><div class="avatar">${esc(authorName(email).slice(0, 1))}</div><strong>${esc(authorName(email))}</strong><span>${esc(email)}</span><button class="author-filter ${state.author === email ? 'selected' : ''}" data-author="${esc(email)}">${state.author === email ? 'Publicaciones' : '⚙️'}</button></article>`; }).join('')}</div>${state.author ? `<section class="author-results"><div class="section-heading"><div><span class="overline">PUBLICACIONES DE AUTOR</span><h2>${esc(authorName(state.author))}</h2></div><button class="text-link" data-clear-author>Limpiar filtro</button></div><div class="entry-list">${authorEntries.map(listRow).join('') || '<div class="empty">Este autor todavía no tiene publicaciones.</div>'}</div></section>` : ''}`;
 }
 
 function renderShell() {
   const siteTitle = data.site['Título del sitio'] || 'Píldoras de Innovación';
   const views = { home: renderHome, entries: renderEntries, categories: renderCategories, authors: renderAuthors };
-  $('#app').innerHTML = `<header class="topbar"><a href="#" class="brand" data-view="home"><span class="logo"><i></i><i></i><i></i></span><span>${esc(siteTitle)}</span></a><nav>${[['home', '⌂', 'Inicio'], ['entries', '♙', 'Entradas'], ['categories', '▣', 'Categorías'], ['authors', '✎', 'Autores']].map(([view, icon, label]) => `<button class="nav-item ${state.view === view ? 'active' : ''}" data-view="${view}"><span>${icon}</span>${label}</button>`).join('')}</nav><div class="account-links"><button class="plain-link">Iniciar sesión</button><button class="signup">Registrarse</button></div></header><main>${views[state.view]()}</main><footer><span class="logo small"><i></i><i></i><i></i></span><span>${esc(siteTitle)}</span><span class="footer-note">Recursos que dejan huella.</span></footer>`;
+  const adminNav = state.admin ? [['home', '⌂', 'Inicio'], ['entries', '♙', 'Entradas'], ['categories', '▣', 'Categorías'], ['authors', '✎', 'Autores']] : [['home', '⌂', 'Inicio'], ['authors', '✎', 'Autores']];
+  const account = state.admin ? `<button class="user-chip" id="logout" title="Cerrar sesión"><span class="avatar mini">${esc(authorName(state.user?.email).slice(0, 1))}</span></button>` : '<div class="account-links"><button class="plain-link">Iniciar sesión</button><button class="signup">Registrarse</button></div>';
+  $('#app').innerHTML = `<header class="topbar"><a href="#" class="brand" data-view="home"><span class="logo"><i></i><i></i><i></i></span><span>${esc(siteTitle)}</span></a><nav>${adminNav.map(([view, icon, label]) => `<button class="nav-item ${state.view === view ? 'active' : ''}" data-view="${view}"><span>${icon}</span>${label}</button>`).join('')}</nav>${account}</header><main>${views[state.view]()}</main><footer><span class="logo small"><i></i><i></i><i></i></span><span>${esc(siteTitle)}</span><span class="footer-note">Recursos que dejan huella.</span></footer>`;
   bindInteractions();
-  if (state.admin) renderAdmin();
 }
 
 function bindInteractions() {
   document.querySelectorAll('[data-view]').forEach(button => button.onclick = event => { event.preventDefault(); state.view = button.dataset.view; state.page = 1; renderShell(); });
   document.querySelectorAll('[data-category]').forEach(button => button.onclick = () => { state.category = button.dataset.category; state.view = state.view === 'categories' ? 'entries' : state.view; state.page = 1; renderShell(); });
   document.querySelectorAll('[data-category-view]').forEach(button => button.onclick = () => openCategory(button.dataset.categoryView));
+  document.querySelectorAll('[data-edit-category]').forEach(button => button.onclick = event => { event.stopPropagation(); openCategoryForm(data.categories.find(category => category['🔒 Row ID'] === button.dataset.editCategory)); });
+  document.querySelectorAll('[data-delete-category]').forEach(button => button.onclick = async event => { event.stopPropagation(); if (!confirm('¿Eliminar esta categoría?')) return; const response = await fetch(`/api/admin/categories/${encodeURIComponent(button.dataset.deleteCategory)}`, { method: 'DELETE' }); if (!response.ok) return; await loadData(); renderShell(); });
   document.querySelectorAll('[data-page]').forEach(button => button.onclick = () => { if (!button.disabled) { state.page = Number(button.dataset.page); renderShell(); } });
   document.querySelectorAll('[data-entry]').forEach(button => button.onclick = () => openEntry(filteredEntries().find(entry => entry['🔒 Row ID'] === button.dataset.entry) || data.entries.find(entry => entry['🔒 Row ID'] === button.dataset.entry)));
+  document.querySelectorAll('[data-edit-entry]').forEach(button => button.onclick = event => { event.stopPropagation(); openEntryForm(data.entries.find(entry => entry['🔒 Row ID'] === button.dataset.editEntry)); });
   document.querySelectorAll('[data-author]').forEach(button => button.onclick = () => { state.author = button.dataset.author; state.view = 'authors'; state.page = 1; renderShell(); });
   document.querySelector('[data-clear-author]')?.addEventListener('click', () => { state.author = ''; renderShell(); });
   const search = $('#search');
   if (search) { search.oninput = event => { state.query = event.target.value; state.page = 1; renderShell(); $('#search')?.focus(); $('#search')?.setSelectionRange(state.query.length, state.query.length); }; search.onkeydown = event => { if (event.key === 'Enter') { state.view = 'entries'; renderShell(); } }; }
-  document.querySelectorAll('#admin-login, .plain-link').forEach(button => button.onclick = () => { window.location.href = '/api/auth/login'; });
+  document.querySelectorAll('#admin-login, .plain-link').forEach(button => button.onclick = () => { if (state.admin && button.id === 'admin-login') openEntryForm(); else window.location.href = '/api/auth/login'; });
+  document.querySelector('#logout')?.addEventListener('click', async () => { await fetch('/api/auth/logout', { method: 'POST' }); state.admin = false; state.user = null; renderShell(); });
+  document.querySelector('#add-category')?.addEventListener('click', () => state.admin ? openCategoryForm() : (window.location.href = '/api/auth/login'));
+  document.querySelector('#add-author')?.addEventListener('click', () => state.admin ? openAuthorForm() : (window.location.href = '/api/auth/login'));
+  document.querySelector('#import-json')?.addEventListener('click', () => $('#json-file').click());
+  document.querySelector('#json-file')?.addEventListener('change', async event => { const file = event.target.files?.[0]; if (!file) return; try { const response = await fetch('/api/admin/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: await file.text() }); if (!response.ok) throw new Error((await response.json()).error || 'No se pudo importar el JSON'); await loadData(); renderShell(); } catch (error) { window.alert(error.message); } finally { event.target.value = ''; } });
 }
 
 function openCategory(name) {
@@ -152,6 +161,49 @@ function openEntry(entry) {
   modal.querySelectorAll('[data-entry]').forEach(button => button.onclick = () => { modal.remove(); openEntry(related.find(item => item['🔒 Row ID'] === button.dataset.entry)); });
 }
 
+function formModal(title, body, onSubmit) {
+  const modal = document.createElement('div');
+  modal.className = 'modal form-modal';
+  modal.innerHTML = `<div class="modal-box form-box"><button class="close" type="button">×</button><form class="modal-form"><h2>${esc(title)}</h2>${body}<div class="form-footer"><button class="primary" type="submit">Enviar</button><button class="secondary" type="button" data-cancel>Cancelar</button></div></form></div>`;
+  document.body.append(modal);
+  modal.onclick = event => { if (event.target === modal || event.target.closest('.close,[data-cancel]')) modal.remove(); };
+  modal.querySelector('form').onsubmit = async event => { event.preventDefault(); const submit = modal.querySelector('[type="submit"]'); submit.disabled = true; try { await onSubmit(new FormData(event.currentTarget)); modal.remove(); await loadData(); renderShell(); } catch (error) { submit.disabled = false; const message = document.createElement('p'); message.className = 'form-error'; message.textContent = error.message; modal.querySelector('.form-footer').before(message); } };
+  return modal;
+}
+
+function openEntryForm(entry = {}) {
+  const editing = Boolean(entry['🔒 Row ID']);
+  const selected = String(entry.Categorías || '').split(',').filter(Boolean);
+  const body = `<p class="required">Categorías <span>Requerido</span></p><div class="category-choices">${data.categories.map(category => `<label class="choice"><input type="checkbox" name="category" value="${esc(category['🔒 Row ID'])}" ${selected.includes(category['🔒 Row ID']) ? 'checked' : ''}><span class="category-dot ${categoryClasses[category.Categoría] || 'app'}"></span>${esc(category.Categoría)}</label>`).join('')}</div><label>Título<input name="Título" required value="${esc(entry.Título)}"></label><label>Texto<textarea name="Texto" required>${esc(entry.Texto)}</textarea></label><label>Enlace<input name="Enlace" type="url" value="${esc(entry.Enlace)}"></label><label>Imagen<input name="Imagen" type="url" value="${esc(entry.Imagen)}" placeholder="https://..."></label><label>Archivo<input name="Archivo" type="url" value="${esc(entry.Archivo)}" placeholder="https://..."></label><label>Tiempo de lectura<input name="Tiempo de lectura" inputmode="numeric" value="${esc(entry['Tiempo de lectura'])}" placeholder="en minutos"></label><label>Fecha creación<input name="Fecha creación" value="${esc(entry['Fecha creación'] || new Date().toLocaleString('es-ES'))}"></label>${editing ? '<button class="delete-link" type="button" data-delete-entry>Borrar entrada</button>' : ''}`;
+  const modal = formModal(editing ? 'Editar Entrada' : 'Añade Entrada', body, async form => {
+    const row = { ...entry, '🔒 Row ID': entry['🔒 Row ID'], 'Fecha creación': form.get('Fecha creación'), Título: form.get('Título'), 'Autor Email': editing ? entry['Autor Email'] : state.user.email, Texto: form.get('Texto'), Enlace: form.get('Enlace'), Imagen: form.get('Imagen'), Archivo: form.get('Archivo'), 'Tiempo de lectura': form.get('Tiempo de lectura'), Categorías: form.getAll('category').join(','), Estado: entry.Estado || 'publicada' };
+    const response = await fetch(`/api/admin/entries${editing ? `/${encodeURIComponent(entry['🔒 Row ID'])}` : ''}`, { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) });
+    if (!response.ok) throw new Error((await response.json()).error || 'No se pudo guardar la entrada');
+  });
+  modal.querySelector('[data-delete-entry]')?.addEventListener('click', async () => { if (!confirm('¿Borrar esta entrada?')) return; const response = await fetch(`/api/admin/entries/${encodeURIComponent(entry['🔒 Row ID'])}`, { method: 'DELETE' }); if (!response.ok) return; modal.remove(); await loadData(); renderShell(); });
+  return modal;
+}
+
+function openCategoryForm(category = {}) {
+  const editing = Boolean(category['🔒 Row ID']);
+  const body = `<label>Categoría<input name="Categoría" required value="${esc(category.Categoría)}"></label><label>Logo categoría<input name="Logo categoría" type="url" value="${esc(category['Logo categoría'] || category.Imagen || category.Logo)}" placeholder="https://..."></label>${editing ? '<button class="delete-link" type="button" data-delete-category-form>Eliminar categoría</button>' : ''}`;
+  const modal = formModal(editing ? 'Editar elemento' : 'Añadir elemento', body, async form => {
+    const row = { ...category, Categoría: form.get('Categoría'), 'Logo categoría': form.get('Logo categoría') };
+    const response = await fetch(`/api/admin/categories${editing ? `/${encodeURIComponent(category['🔒 Row ID'])}` : ''}`, { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) });
+    if (!response.ok) throw new Error((await response.json()).error || 'No se pudo guardar la categoría');
+  });
+  modal.querySelector('[data-delete-category-form]')?.addEventListener('click', async () => { if (!confirm('¿Eliminar esta categoría?')) return; const response = await fetch(`/api/admin/categories/${encodeURIComponent(category['🔒 Row ID'])}`, { method: 'DELETE' }); if (!response.ok) return; modal.remove(); await loadData(); renderShell(); });
+  return modal;
+}
+
+function openAuthorForm() {
+  const body = `<label>Selecciona el Usuario<input name="email Autor" type="email" required placeholder="correo@dominio.com"></label><label>email Autor<input name="email Autor copia" type="email" required placeholder="correo@dominio.com"></label>`;
+  return formModal('Añadir Autor', body, async form => {
+    const response = await fetch('/api/admin/authors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ 'email Autor': form.get('email Autor copia'), 'Filtra autor': 'false' }) });
+    if (!response.ok) throw new Error((await response.json()).error || 'No se pudo guardar el autor');
+  });
+}
+
 async function renderAdmin() {
   const me = await fetch('/api/auth/me').then(response => response.json()).catch(() => ({}));
   if (!me.user) return;
@@ -172,6 +224,5 @@ async function renderAdmin() {
   $('#logout').onclick = async () => { await fetch('/api/auth/logout', { method: 'POST' }); state.admin = false; renderShell(); };
 }
 
-const params = new URLSearchParams(location.search);
-async function loadAuth() { const response = await fetch('/api/auth/me').catch(() => null); if (!response?.ok) return; const result = await response.json(); state.admin = Boolean(result.user) || params.get('admin') === '1'; }
+async function loadAuth() { const response = await fetch('/api/auth/me').catch(() => null); if (!response?.ok) return; const result = await response.json(); state.user = result.user || null; state.admin = Boolean(result.user); }
 loadData().then(async () => { await loadAuth(); renderShell(); if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {}); });
