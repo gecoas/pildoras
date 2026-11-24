@@ -70,6 +70,12 @@ jobs:
           PILDORAS_SESSION_SECRET: ${{ secrets.PILDORAS_SESSION_SECRET }}
           PILDORAS_GOOGLE_CLIENT_ID: ${{ secrets.PILDORAS_GOOGLE_CLIENT_ID }}
           PILDORAS_GOOGLE_CLIENT_SECRET: ${{ secrets.PILDORAS_GOOGLE_CLIENT_SECRET }}
+          PILDORAS_SMTP_HOST: ${{ secrets.PILDORAS_SMTP_HOST }}
+          PILDORAS_SMTP_PORT: ${{ secrets.PILDORAS_SMTP_PORT }}
+          PILDORAS_SMTP_SECURE: ${{ secrets.PILDORAS_SMTP_SECURE }}
+          PILDORAS_SMTP_USER: ${{ secrets.PILDORAS_SMTP_USER }}
+          PILDORAS_SMTP_PASS: ${{ secrets.PILDORAS_SMTP_PASS }}
+          PILDORAS_MAIL_FROM: ${{ secrets.PILDORAS_MAIL_FROM }}
         run: |
           set -euo pipefail
           umask 077
@@ -135,7 +141,7 @@ jobs:
 
           ssh -T "${SSH_OPTIONS[@]}" "$PROD_USER@$PROD_HOST" true
 
-          REMOTE_COMMAND="GITHUB_SHA=$(printf '%q' "$GITHUB_SHA") PILDORAS_POSTGRES_PASSWORD=$(printf '%q' "$PILDORAS_POSTGRES_PASSWORD") PILDORAS_SESSION_SECRET=$(printf '%q' "$PILDORAS_SESSION_SECRET") PILDORAS_GOOGLE_CLIENT_ID=$(printf '%q' "$PILDORAS_GOOGLE_CLIENT_ID") PILDORAS_GOOGLE_CLIENT_SECRET=$(printf '%q' "$PILDORAS_GOOGLE_CLIENT_SECRET") bash -s"
+          REMOTE_COMMAND="GITHUB_SHA=$(printf '%q' "$GITHUB_SHA") PILDORAS_POSTGRES_PASSWORD=$(printf '%q' "$PILDORAS_POSTGRES_PASSWORD") PILDORAS_SESSION_SECRET=$(printf '%q' "$PILDORAS_SESSION_SECRET") PILDORAS_GOOGLE_CLIENT_ID=$(printf '%q' "$PILDORAS_GOOGLE_CLIENT_ID") PILDORAS_GOOGLE_CLIENT_SECRET=$(printf '%q' "$PILDORAS_GOOGLE_CLIENT_SECRET") PILDORAS_SMTP_HOST=$(printf '%q' "$PILDORAS_SMTP_HOST") PILDORAS_SMTP_PORT=$(printf '%q' "$PILDORAS_SMTP_PORT") PILDORAS_SMTP_SECURE=$(printf '%q' "$PILDORAS_SMTP_SECURE") PILDORAS_SMTP_USER=$(printf '%q' "$PILDORAS_SMTP_USER") PILDORAS_SMTP_PASS=$(printf '%q' "$PILDORAS_SMTP_PASS") PILDORAS_MAIL_FROM=$(printf '%q' "$PILDORAS_MAIL_FROM") bash -s"
           ssh "${SSH_OPTIONS[@]}" "$PROD_USER@$PROD_HOST" "$REMOTE_COMMAND" <<'REMOTE'
             set -euo pipefail
 
@@ -167,6 +173,13 @@ jobs:
               "GOOGLE_CALLBACK_URL=https://pildoras.gecoas.es/api/auth/callback" \
               "ADMIN_EMAILS=gbailly@alcaste-lasfuentes.com" \
               "GOOGLE_ALLOWED_DOMAINS=alcaste-lasfuentes.com,gecoas.com" > .env.next
+            printf '%s\n' \
+              "SMTP_HOST=$PILDORAS_SMTP_HOST" \
+              "SMTP_PORT=$PILDORAS_SMTP_PORT" \
+              "SMTP_SECURE=$PILDORAS_SMTP_SECURE" \
+              "SMTP_USER=$PILDORAS_SMTP_USER" \
+              "SMTP_PASS=$PILDORAS_SMTP_PASS" \
+              "MAIL_FROM=$PILDORAS_MAIL_FROM" >> .env.next
             mv .env.next .env
             chmod 600 .env
 

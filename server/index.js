@@ -13,10 +13,4 @@ await pool.query(schema);
 await seedIfEmpty(pool, path.resolve(root, '../public/data'));
 const port = Number(process.env.PORT || 3000);
 const app = createApp({ pool });
-const publishScheduled = async () => {
-  await pool.query(`UPDATE content_entries SET data = jsonb_set(data, '{Estado}', '"publicada"'::jsonb), updated_at = now()
-    WHERE data->>'Estado' = 'programada' AND data->>'Publicar en fecha' ~ '^\\d{4}-' AND (data->>'Publicar en fecha')::timestamptz <= now()`);
-};
-publishScheduled().catch(error => console.error('No se pudieron publicar las entradas programadas', error));
-setInterval(() => publishScheduled().catch(error => console.error('No se pudieron publicar las entradas programadas', error)), 30000);
 app.listen(port, () => console.log(`Pildoras API listening on ${port}`));

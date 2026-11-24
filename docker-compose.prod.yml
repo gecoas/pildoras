@@ -30,6 +30,13 @@ services:
       GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-https://pildoras.example.com/api/auth/callback}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-gbailly@alcaste-lasfuentes.com}
       GOOGLE_ALLOWED_DOMAINS: ${GOOGLE_ALLOWED_DOMAINS:-alcaste-lasfuentes.com}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-https://pildoras.gecoas.es}
     depends_on:
       db:
         condition: service_healthy
