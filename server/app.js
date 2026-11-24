@@ -59,13 +59,23 @@ export function createApp({ pool, oauthClient = new OAuth2Client(process.env.GOO
       throw error;
     }
   };
+  let publishingScheduled = false;
   const publishScheduled = async () => {
-    const result = await pool.query(`UPDATE content_entries SET data = jsonb_set(data, '{Estado}', '"publicada"'::jsonb), updated_at = now()
-      WHERE data->>'Estado' = 'programada' AND data->>'Publicar en fecha' ~ '^\\d{4}-' AND (data->>'Publicar en fecha')::timestamptz <= now() RETURNING id, data`);
-    for (const row of result.rows) await notifyPublication(row.data, row.id);
+    if (publishingScheduled) return;
+    publishingScheduled = true;
+    try {
+      const due = await pool.query("SELECT id, data FROM content_entries WHERE data->>'Estado' = 'programada'");
+      for (const row of due.rows) {
+        const timestamp = Date.parse(row.data['Publicar en fecha'] || '');
+        if (Number.isNaN(timestamp) || timestamp > Date.now()) continue;
+        const result = await pool.query(`UPDATE content_entries SET data = jsonb_set(data, '{Estado}', '"publicada"'::jsonb), updated_at = now()
+          WHERE id = $1 AND data->>'Estado' = 'programada' RETURNING id, data`, [row.id]);
+        if (result.rowCount) await notifyPublication(result.rows[0].data, result.rows[0].id);
+      }
+    } finally { publishingScheduled = false; }
   };
   publishScheduled().catch(error => console.error('No se pudieron publicar las entradas programadas', error));
-  setInterval(() => publishScheduled().catch(error => console.error('No se pudieron publicar las entradas programadas', error)), 30000);
+  setInterval(() => publishScheduled().catch(error => console.error('No se pudieron publicar las entradas programadas', error)), 10000);
 
   const publicData = async (req, res) => {
     const out = {};
