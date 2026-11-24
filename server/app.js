@@ -41,21 +41,22 @@ export function createApp({ pool, oauthClient = new OAuth2Client(process.env.GOO
     cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 1000 * 60 * 60 * 12 }
   }));
   const mailer = process.env.SMTP_HOST ? nodemailer.createTransport({ host: process.env.SMTP_HOST, port: Number(process.env.SMTP_PORT || 587), secure: process.env.SMTP_SECURE === 'true', auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined }) : null;
-  const notifyPublication = async (entry, entryId) => {
+  const notifyPublication = async (entry, entryId, options = {}) => {
     if (!mailer) { console.warn('SMTP no configurado; no se enviará la publicación', entry.Título); return; }
-    const marker = await pool.query('INSERT INTO publication_notifications (entry_id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING entry_id', [entryId]);
-    if (!marker.rowCount) return;
+    const preview = options.preview === true;
+    const marker = preview ? null : await pool.query('INSERT INTO publication_notifications (entry_id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING entry_id', [entryId]);
+    if (marker && !marker.rowCount) return;
     try {
-      const recipients = (await pool.query('SELECT email FROM users WHERE subscribed = true ORDER BY email')).rows.map(row => row.email);
+      const recipients = options.recipients || (await pool.query('SELECT email FROM users WHERE subscribed = true ORDER BY email')).rows.map(row => row.email);
       if (!recipients.length) return;
       const appUrl = process.env.PUBLIC_APP_URL || 'https://pildoras.gecoas.es';
       const link = `${appUrl}/?entry=${encodeURIComponent(entryId)}`;
       const imageUrl = entry.Imagen ? (String(entry.Imagen).startsWith('http') ? entry.Imagen : `${appUrl}${entry.Imagen.startsWith('/') ? '' : '/'}${entry.Imagen}`) : '';
       const image = imageUrl ? `<img src="${htmlEscape(imageUrl)}" alt="" style="display:block;width:100%;max-height:520px;object-fit:contain;border-radius:12px;margin:24px 0;background:#f3f6f7;">` : '';
       const html = `<!doctype html><html><body style="margin:0;background:#eef2f4;font-family:Arial,Helvetica,sans-serif;color:#253746;"><div style="max-width:680px;margin:24px auto;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 12px 35px #183d4a18;"><div style="padding:28px 32px;background:#326f88;color:#fff;font-size:28px;font-weight:700;">💊 Píldoras de Innovación</div><main style="padding:34px 42px;"><p style="margin:0 0 12px;color:#326f88;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;">Nueva publicación</p><h1 style="margin:0 0 20px;font-size:34px;line-height:1.15;color:#263746;">${htmlEscape(entry.Título)}</h1>${image}<div style="font-size:17px;line-height:1.65;color:#43515a;">${textHtml(String(entry.Texto || '').slice(0, 900))}${String(entry.Texto || '').length > 900 ? '…' : ''}</div><p style="text-align:center;margin:32px 0;"><a href="${htmlEscape(link)}" style="display:inline-block;padding:15px 28px;border-radius:9px;background:#326f88;color:#fff;text-decoration:none;font-weight:700;font-size:17px;">Ver entrada</a></p><hr style="border:0;border-top:1px solid #dce4e7;"><p style="margin:20px 0 0;text-align:right;color:#6e7c82;font-size:14px;">por <strong>${htmlEscape(entry['Autor Email'] || 'Píldoras de Innovación')}</strong><br>⏱ Tiempo estimado de lectura/visionado ${htmlEscape(entry['Tiempo de lectura'] || '3')} minutos</p></main></div></body></html>`;
-      await mailer.sendMail({ from: process.env.MAIL_FROM || process.env.SMTP_USER, bcc: recipients, subject: `Nueva publicación: ${entry.Título}`, html, text: `Nueva publicación: ${entry.Título}\n\n${entry.Texto || ''}\n\nVer entrada: ${link}` });
+      await mailer.sendMail({ from: process.env.MAIL_FROM || process.env.SMTP_USER, bcc: recipients, subject: `${preview ? '[Vista previa] ' : 'Nueva publicación: '}${entry.Título}`, html, text: `Nueva publicación: ${entry.Título}\n\n${entry.Texto || ''}\n\nVer entrada: ${link}` });
     } catch (error) {
-      await pool.query('DELETE FROM publication_notifications WHERE entry_id = $1', [entryId]);
+      if (!preview) await pool.query('DELETE FROM publication_notifications WHERE entry_id = $1', [entryId]);
       throw error;
     }
   };
@@ -85,6 +86,7 @@ export function createApp({ pool, oauthClient = new OAuth2Client(process.env.GOO
   };
   app.get('/api/data', publicData);
   for (const type of Object.keys(TYPES)) app.get(`/api/${type}`, async (req, res, next) => { try { res.json(normalizeRows((await pool.query(publicTableQuery(TYPES[type], type))).rows)); } catch (e) { next(e); } });
+  app.post('/api/entries/:id/visit', async (req, res, next) => { try { const result = await pool.query(`UPDATE content_entries SET data = jsonb_set(jsonb_set(data, '{nº visitas}', to_jsonb(COALESCE(NULLIF(data->>'nº visitas', '')::int, 0) + 1)), '{Última visita new}', to_jsonb(to_char(now() AT TIME ZONE 'Europe/Madrid', 'DD/MM/YYYY, HH24:MI:SS'))), updated_at = now() WHERE id = $1 AND LOWER(COALESCE(data->>'Estado', '')) LIKE '%publicad%' RETURNING id, data`, [req.params.id]); if (!result.rowCount) return res.status(404).json({ error: 'Entrada no encontrada' }); res.json(normalizeRows(result.rows)[0]); } catch (e) { next(e); } });
   app.get('/api/auth/login', (req, res, next) => { const state = randomUUID(); req.session.oauthState = state; req.session.authMode = req.query.mode === 'register' ? 'register' : 'login'; req.session.save(error => { if (error) return next(error); res.redirect(oauthClient.generateAuthUrl({ access_type: 'offline', scope: ['openid', 'email', 'profile'], prompt: 'select_account', state })); }); });
   app.get('/api/auth/callback', async (req, res, next) => { try {
     if (!req.query.state || req.query.state !== req.session.oauthState) return res.status(400).send('Estado OAuth inválido');
@@ -138,6 +140,7 @@ export function createApp({ pool, oauthClient = new OAuth2Client(process.env.GOO
       res.status(201).json({ url: `/uploads/${filename}` });
     } catch (error) { next(error); }
   });
+  app.post('/api/admin/entries/:id/preview-email', async (req, res, next) => { try { if (!mailer) return res.status(503).json({ error: 'SMTP no está configurado' }); const result = await pool.query('SELECT id, data FROM content_entries WHERE id = $1', [req.params.id]); if (!result.rowCount) return res.status(404).json({ error: 'Entrada no encontrada' }); await notifyPublication(result.rows[0].data, result.rows[0].id, { preview: true, recipients: adminEmails() }); res.json({ sent: true }); } catch (e) { next(e); } });
   app.get('/api/admin/:type', validType, async (req, res, next) => { try { res.json(normalizeRows((await pool.query(`SELECT id, data FROM ${TYPES[req.params.type]} ORDER BY updated_at DESC`)).rows)); } catch (e) { next(e); } });
   app.post('/api/admin/:type', validType, async (req, res, next) => { try { const id = getId(req.body); const row = { ...req.body, '🔒 Row ID': req.body['🔒 Row ID'] || id }; await pool.query(`INSERT INTO ${TYPES[req.params.type]} (id, data) VALUES ($1, $2)`, [id, row]); if (req.params.type === 'entries' && /publicad/i.test(row.Estado || '')) await notifyPublication(row, id); res.status(201).json(row); } catch (e) { next(e); } });
   app.put('/api/admin/:type/:id', validType, async (req, res, next) => { try { const row = { ...req.body, '🔒 Row ID': req.body['🔒 Row ID'] || req.params.id }; const result = await pool.query(`UPDATE ${TYPES[req.params.type]} SET data = $1, updated_at = now() WHERE id = $2 RETURNING id, data`, [row, req.params.id]); if (!result.rowCount) return res.status(404).json({ error: 'No encontrado' }); if (req.params.type === 'entries' && /publicad/i.test(row.Estado || '')) await notifyPublication(row, req.params.id); res.json(normalizeRows(result.rows)[0]); } catch (e) { next(e); } });
