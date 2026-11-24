@@ -155,7 +155,7 @@ function bindInteractions() {
     if (action === 'edit') openEntryForm(entry);
     if (action === 'schedule') openEntryForm({ ...entry, Estado: 'programada' });
     if (action === 'publish') { await updateEntryStatus(entry, 'publicada'); }
-    if (action === 'preview-email') { const response = await fetch(`/api/admin/entries/${encodeURIComponent(entry['🔒 Row ID'])}/preview-email`, { method: 'POST' }); if (response.ok) window.alert('Vista previa enviada al administrador'); else window.alert((await response.json()).error || 'No se pudo enviar la vista previa'); }
+    if (action === 'preview-email') { const response = await fetch(`/api/admin/entries/${encodeURIComponent(entry['🔒 Row ID'])}/preview-email`, { method: 'POST' }); const result = await response.json().catch(() => ({})); if (response.ok) window.alert('Vista previa enviada al administrador'); else window.alert(result.error || `No se pudo enviar la vista previa (${response.status})`); }
     if (action === 'delete' && confirm('¿Borrar esta entrada?')) { await fetch(`/api/admin/entries/${encodeURIComponent(entry['🔒 Row ID'])}`, { method: 'DELETE' }); await loadData(); renderShell(); }
   });
   document.querySelectorAll('[data-author]').forEach(button => button.onclick = () => { state.author = button.dataset.author; state.view = 'authors'; state.page = 1; renderShell(); });
