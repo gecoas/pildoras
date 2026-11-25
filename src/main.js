@@ -70,7 +70,7 @@ function filteredEntries() {
   }).sort((a, b) => dateOf(b['Fecha creación']) - dateOf(a['Fecha creación']));
 }
 
-function categoryPills(entry) { return categoryNames(entry).map(name => `<span class="pill">${esc(name)}</span>`).join(''); }
+function categoryPills(entry) { return categoryNames(entry).map(name => { const category = data.categories.find(item => item.Categoría === name); const logo = category?.Imagen || category?.Logo || category?.['Logo categoría']; return `<span class="modal-category"><span class="modal-category-logo">${logo ? `<img src="${esc(logo)}" alt="" onerror="this.style.display='none'">` : esc(categoryIcons[name] || '✦')}</span><strong>${esc(name)}</strong></span>`; }).join(''); }
 
 function categoryArtwork(category) {
   const name = category.Categoría || 'Recurso';
