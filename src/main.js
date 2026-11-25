@@ -6,6 +6,7 @@ import staticSiteRows from '../public/data/Anyone.json';
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+async function responseError(response, fallback) { const raw = await response.text(); try { return JSON.parse(raw).error || fallback; } catch { if (response.status === 413) return 'El archivo o la petición supera el límite permitido'; return `${fallback} (HTTP ${response.status})`; } }
 const fallback = { entries: staticEntries, authors: staticAuthors, categories: staticCategories, site: staticSiteRows[0] || {} };
 const categoryIcons = { App: '▣', IA: '✦', Web: '⌁', Documento: '▤' };
 const categoryClasses = { App: 'app', IA: 'ia', Web: 'web', Documento: 'documento' };
@@ -176,7 +177,7 @@ function bindInteractions() {
   document.querySelector('#add-category')?.addEventListener('click', () => state.admin ? openCategoryForm() : (window.location.href = '/api/auth/login'));
   document.querySelector('#add-author')?.addEventListener('click', () => state.admin ? openAuthorForm() : (window.location.href = '/api/auth/login'));
   document.querySelector('#import-json')?.addEventListener('click', () => $('#json-file').click());
-  document.querySelector('#json-file')?.addEventListener('change', async event => { const file = event.target.files?.[0]; if (!file) return; try { const response = await fetch('/api/admin/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: await file.text() }); if (!response.ok) throw new Error((await response.json()).error || 'No se pudo importar el JSON'); await loadData(); renderShell(); } catch (error) { window.alert(error.message); } finally { event.target.value = ''; } });
+  document.querySelector('#json-file')?.addEventListener('change', async event => { const file = event.target.files?.[0]; if (!file) return; try { const response = await fetch('/api/admin/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: await file.text() }); if (!response.ok) throw new Error(await responseError(response, 'No se pudo importar el JSON')); await loadData(); renderShell(); } catch (error) { window.alert(error.message); } finally { event.target.value = ''; } });
 }
 
 function openCategory(name) {
@@ -227,10 +228,10 @@ function openEntryForm(entry = {}) {
     const status = form.get('Estado') || 'borrador';
     const publishDate = form.get('Publicar en fecha');
     if (status === 'programada' && !publishDate) throw new Error('Indica la fecha y hora de publicación');
-    const upload = async field => { const file = form.get(field); if (!(file instanceof File) || !file.size) return entry[field === 'ImagenFile' ? 'Imagen' : 'Archivo'] || ''; const encoded = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); const response = await fetch('/api/admin/uploads', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: encoded }) }); if (!response.ok) throw new Error((await response.json()).error || 'No se pudo subir el archivo'); return (await response.json()).url; };
+    const upload = async field => { const file = form.get(field); if (!(file instanceof File) || !file.size) return entry[field === 'ImagenFile' ? 'Imagen' : 'Archivo'] || ''; const encoded = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); const response = await fetch('/api/admin/uploads', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: encoded }) }); if (!response.ok) throw new Error(await responseError(response, 'No se pudo subir el archivo')); return (await response.json()).url; };
     const row = { ...entry, '🔒 Row ID': entry['🔒 Row ID'], 'Fecha creación': form.get('Fecha creación'), 'Publicar en fecha': publishDate ? new Date(publishDate).toISOString() : '', Título: form.get('Título'), 'Autor Email': editing ? entry['Autor Email'] : state.user.email, Texto: form.get('Texto'), Enlace: form.get('Enlace'), Imagen: await upload('ImagenFile'), Archivo: await upload('ArchivoFile'), 'Tiempo de lectura': form.get('Tiempo de lectura'), Categorías: form.getAll('category').join(','), Estado: status };
     const response = await fetch(`/api/admin/entries${editing ? `/${encodeURIComponent(entry['🔒 Row ID'])}` : ''}`, { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) });
-    if (!response.ok) throw new Error((await response.json()).error || 'No se pudo guardar la entrada');
+    if (!response.ok) throw new Error(await responseError(response, 'No se pudo guardar la entrada'));
   });
   modal.querySelector('[data-delete-entry]')?.addEventListener('click', async () => { if (!confirm('¿Borrar esta entrada?')) return; const response = await fetch(`/api/admin/entries/${encodeURIComponent(entry['🔒 Row ID'])}`, { method: 'DELETE' }); if (!response.ok) return; modal.remove(); await loadData(); renderShell(); });
   return modal;
@@ -242,7 +243,7 @@ function openCategoryForm(category = {}) {
   const modal = formModal(editing ? 'Editar elemento' : 'Añadir elemento', body, async form => {
     const row = { ...category, Categoría: form.get('Categoría'), 'Logo categoría': form.get('Logo categoría') };
     const response = await fetch(`/api/admin/categories${editing ? `/${encodeURIComponent(category['🔒 Row ID'])}` : ''}`, { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) });
-    if (!response.ok) throw new Error((await response.json()).error || 'No se pudo guardar la categoría');
+    if (!response.ok) throw new Error(await responseError(response, 'No se pudo guardar la categoría'));
   });
   modal.querySelector('[data-delete-category-form]')?.addEventListener('click', async () => { if (!confirm('¿Eliminar esta categoría?')) return; const response = await fetch(`/api/admin/categories/${encodeURIComponent(category['🔒 Row ID'])}`, { method: 'DELETE' }); if (!response.ok) return; modal.remove(); await loadData(); renderShell(); });
   return modal;
@@ -252,7 +253,7 @@ function openAuthorForm() {
   const body = `<label>Selecciona el Usuario<input name="email Autor" type="email" required placeholder="correo@dominio.com"></label><label>email Autor<input name="email Autor copia" type="email" required placeholder="correo@dominio.com"></label>`;
   return formModal('Añadir Autor', body, async form => {
     const response = await fetch('/api/admin/authors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ 'email Autor': form.get('email Autor copia'), 'Filtra autor': 'false' }) });
-    if (!response.ok) throw new Error((await response.json()).error || 'No se pudo guardar el autor');
+    if (!response.ok) throw new Error(await responseError(response, 'No se pudo guardar el autor'));
   });
 }
 

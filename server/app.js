@@ -10,7 +10,7 @@ import nodemailer from 'nodemailer';
 import { TYPES, getId, normalizeRows } from './data.js';
 
 const PgStore = pgSession(session);
-const jsonLimit = '12mb';
+const jsonLimit = '16mb';
 const uploadRoot = '/app/uploads';
 const asList = value => String(value || '').split(',').map(x => x.trim()).filter(Boolean);
 const allowedDomains = () => asList(process.env.GOOGLE_ALLOWED_DOMAINS || 'alcaste-lasfuentes.com,gecoas.com');
