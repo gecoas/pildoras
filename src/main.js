@@ -66,7 +66,7 @@ function filteredEntries() {
   return publishedEntries().filter(entry => {
     const categories = categoryNames(entry);
     const haystack = [entry.Título, entry.Texto, entry['Autor Email'], ...categories].join(' ').toLocaleLowerCase('es');
-    return (state.category === 'Todas' || categories.includes(state.category)) && (!state.author || entry['Autor Email'] === state.author) && (!query || haystack.includes(query));
+    return (state.category === 'Todas' || categories.includes(state.category)) && (state.view !== 'authors' || !state.author || entry['Autor Email'] === state.author) && (!query || haystack.includes(query));
   }).sort((a, b) => dateOf(b['Fecha creación']) - dateOf(a['Fecha creación']));
 }
 
