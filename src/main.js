@@ -127,7 +127,7 @@ function renderCategories() {
 
 function renderAuthors() {
   const authorEntries = state.author ? filteredEntries() : [];
-  return `<section class="page-heading centered"><div><p class="help">Pulsa ⚙️ para filtrar las publicaciones del Autor</p><h1>Autores</h1></div><button class="primary" id="add-author">+ Añade Autor</button></section><div class="authors-grid">${data.authors.map(author => { const email = author['email Autor']; return `<article class="author-card"><div class="avatar">${esc(authorName(email).slice(0, 1))}</div><strong>${esc(authorName(email))}</strong><span>${esc(email)}</span><button class="author-filter ${state.author === email ? 'selected' : ''}" data-author="${esc(email)}">${state.author === email ? 'Publicaciones' : '⚙️'}</button></article>`; }).join('')}</div>${state.author ? `<section class="author-results"><div class="section-heading"><div><span class="overline">PUBLICACIONES DE AUTOR</span><h2>${esc(authorName(state.author))}</h2></div><button class="text-link" data-clear-author>Limpiar filtro</button></div><div class="entry-list">${authorEntries.map(listRow).join('') || '<div class="empty">Este autor todavía no tiene publicaciones.</div>'}</div></section>` : ''}`;
+  return `<section class="page-heading centered"><div><p class="help">Pulsa ⚙️ para filtrar las publicaciones del Autor</p><h1>Autores</h1></div><button class="primary" id="add-author">+ Añade Autor</button></section><div class="authors-grid">${data.authors.map(author => { const email = author['email Autor']; return `<article class="author-card"><div class="avatar">${esc(authorName(email).slice(0, 1))}</div><strong>${esc(authorName(email))}</strong><span>${esc(email)}</span><button class="author-filter ${state.author === email ? 'selected' : ''}" data-author="${esc(email)}">${state.author === email ? 'Publicaciones' : '⚙️'}</button>${state.admin ? `<button class="author-edit" data-edit-author="${esc(author['🔒 Row ID'] || '')}" aria-label="Editar autor">Editar</button>` : ''}</article>`; }).join('')}</div>${state.author ? `<section class="author-results"><div class="section-heading"><div><span class="overline">PUBLICACIONES DE AUTOR</span><h2>${esc(authorName(state.author))}</h2></div><button class="text-link" data-clear-author>Limpiar filtro</button></div><div class="entry-list">${authorEntries.map(listRow).join('') || '<div class="empty">Este autor todavía no tiene publicaciones.</div>'}</div></section>` : ''}`;
 }
 
 function renderShell() {
@@ -160,6 +160,7 @@ function bindInteractions() {
     if (action === 'delete' && confirm('¿Borrar esta entrada?')) { await fetch(`/api/admin/entries/${encodeURIComponent(entry['🔒 Row ID'])}`, { method: 'DELETE' }); await loadData(); renderShell(); }
   });
   document.querySelectorAll('[data-author]').forEach(button => button.onclick = () => { state.author = button.dataset.author; state.view = 'authors'; state.page = 1; renderShell(); });
+  document.querySelectorAll('[data-edit-author]').forEach(button => button.onclick = event => { event.stopPropagation(); openAuthorForm(data.authors.find(author => author['🔒 Row ID'] === button.dataset.editAuthor)); });
   document.querySelector('[data-clear-author]')?.addEventListener('click', () => { state.author = ''; renderShell(); });
   const search = $('#search');
   if (search) { search.oninput = event => { state.query = event.target.value; state.page = 1; renderShell(); $('#search')?.focus(); $('#search')?.setSelectionRange(state.query.length, state.query.length); }; search.onkeydown = event => { if (event.key === 'Enter') { state.view = 'entries'; renderShell(); } }; }
@@ -249,10 +250,12 @@ function openCategoryForm(category = {}) {
   return modal;
 }
 
-function openAuthorForm() {
-  const body = `<label>Selecciona el Usuario<input name="email Autor" type="email" required placeholder="correo@dominio.com"></label><label>email Autor<input name="email Autor copia" type="email" required placeholder="correo@dominio.com"></label>`;
-  return formModal('Añadir Autor', body, async form => {
-    const response = await fetch('/api/admin/authors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ 'email Autor': form.get('email Autor copia'), 'Filtra autor': 'false' }) });
+function openAuthorForm(author = {}) {
+  const editing = Boolean(author['🔒 Row ID']);
+  const body = `<label>Email del autor<input name="email Autor" type="email" required value="${esc(author['email Autor'])}" placeholder="correo@dominio.com"></label><label class="choice"><input name="Filtra autor" type="checkbox" ${String(author['Filtra autor']).toLowerCase() === 'true' ? 'checked' : ''}>Mostrar como filtro</label>`;
+  return formModal(editing ? 'Editar Autor' : 'Añadir Autor', body, async form => {
+    const row = { ...author, 'email Autor': form.get('email Autor'), 'Filtra autor': form.get('Filtra autor') ? 'true' : 'false' };
+    const response = await fetch(`/api/admin/authors${editing ? `/${encodeURIComponent(author['🔒 Row ID'])}` : ''}`, { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) });
     if (!response.ok) throw new Error(await responseError(response, 'No se pudo guardar el autor'));
   });
 }
