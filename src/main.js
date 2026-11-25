@@ -134,7 +134,7 @@ function renderShell() {
   const siteTitle = data.site['Título del sitio'] || 'Píldoras de Innovación';
   const views = { home: renderHome, entries: renderEntries, categories: renderCategories, authors: renderAuthors };
   const adminNav = state.admin ? [['home', '⌂', 'Inicio'], ['entries', '♙', 'Entradas'], ['categories', '▣', 'Categorías'], ['authors', '✎', 'Autores']] : [['home', '⌂', 'Inicio'], ['authors', '✎', 'Autores']];
-  const account = state.admin ? `<button class="user-chip" id="logout" title="Cerrar sesión"><span class="avatar mini">${esc(authorName(state.user?.email).slice(0, 1))}</span></button>` : '<div class="account-links"><button class="plain-link">Iniciar sesión</button><button class="signup">Registrarse</button></div>';
+  const account = state.admin ? `<button class="user-chip" id="logout" title="Cerrar sesión"><span class="avatar mini">${esc(authorName(state.user?.email).slice(0, 1))}</span></button>` : '<div class="account-links"><button class="plain-link">Iniciar sesión</button></div>';
   $('#app').innerHTML = `<header class="topbar"><a href="#" class="brand" data-view="home"><span class="logo"><i></i><i></i><i></i></span><span>${esc(siteTitle)}</span></a><nav>${adminNav.map(([view, icon, label]) => `<button class="nav-item ${state.view === view ? 'active' : ''}" data-view="${view}"><span>${icon}</span>${label}</button>`).join('')}</nav>${account}</header><main>${views[state.view]()}</main><footer><span class="logo small"><i></i><i></i><i></i></span><span>${esc(siteTitle)}</span><span class="footer-note">Recursos que dejan huella.</span></footer>`;
   bindInteractions();
 }
@@ -166,7 +166,6 @@ function bindInteractions() {
   if (search) { search.oninput = event => { state.query = event.target.value; state.page = 1; renderShell(); $('#search')?.focus(); $('#search')?.setSelectionRange(state.query.length, state.query.length); }; search.onkeydown = event => { if (event.key === 'Enter') { state.view = 'entries'; renderShell(); } }; }
   document.querySelectorAll('#admin-login').forEach(button => button.onclick = () => state.admin ? openEntryForm() : (window.location.href = '/api/auth/login?mode=login'));
   document.querySelector('.plain-link')?.addEventListener('click', () => { window.location.href = '/api/auth/login?mode=login'; });
-  document.querySelector('.signup')?.addEventListener('click', () => { window.location.href = '/api/auth/login?mode=register'; });
   document.querySelector('#subscribe')?.addEventListener('click', async () => {
     if (!state.user) { window.location.href = '/api/auth/login?mode=register'; return; }
     const response = await fetch('/api/account/subscription', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscribed: !state.user.subscribed }) });
