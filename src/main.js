@@ -9,6 +9,7 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&a
 async function responseError(response, fallback) { const raw = await response.text(); try { return JSON.parse(raw).error || fallback; } catch { if (response.status === 413) return 'El archivo o la petición supera el límite permitido'; return `${fallback} (HTTP ${response.status})`; } }
 const fallback = { entries: staticEntries, authors: staticAuthors, categories: staticCategories, site: staticSiteRows[0] || {} };
 const categoryIcons = { App: '▣', IA: '✦', Web: '⌁', Documento: '▤' };
+const categoryLogos = { App: '/category-app.svg', IA: '/category-ia.svg', Web: '/category-web.svg', Documento: '/category-documento.svg' };
 const categoryClasses = { App: 'app', IA: 'ia', Web: 'web', Documento: 'documento' };
 const typeLabels = { entries: 'Entradas', authors: 'Autores', categories: 'Categorías' };
 let data = fallback;
@@ -70,18 +71,20 @@ function filteredEntries() {
   }).sort((a, b) => dateOf(b['Fecha creación']) - dateOf(a['Fecha creación']));
 }
 
-function categoryPills(entry) { return categoryNames(entry).map(name => { const category = data.categories.find(item => item.Categoría === name); const logo = category?.Imagen || category?.Logo || category?.['Logo categoría']; return `<span class="modal-category"><span class="modal-category-logo">${logo ? `<img src="${esc(logo)}" alt="" onerror="this.style.display='none'">` : esc(categoryIcons[name] || '✦')}</span><strong>${esc(name)}</strong></span>`; }).join(''); }
+function categoryPills(entry) { return categoryNames(entry).map(name => { const category = data.categories.find(item => item.Categoría === name); const logo = category?.Imagen || category?.Logo || category?.['Logo categoría'] || categoryLogos[name]; return `<span class="modal-category"><span class="modal-category-logo">${logo ? `<img src="${esc(logo)}" alt="" onerror="this.style.display='none'">` : esc(categoryIcons[name] || '✦')}</span><strong>${esc(name)}</strong></span>`; }).join(''); }
 
 function categoryArtwork(category) {
   const name = category.Categoría || 'Recurso';
   const kind = categoryClasses[name] || 'app';
-  return `<div class="category-art ${kind}">${category.Imagen || category.Logo || category['Logo categoría'] ? `<img src="${esc(category.Imagen || category.Logo || category['Logo categoría'])}" alt="" onerror="this.style.display='none'">` : `<span>${categoryIcons[name] || '✦'}</span>`}</div>`;
+  const logo = category.Imagen || category.Logo || category['Logo categoría'] || categoryLogos[name];
+  return `<div class="category-art ${kind}">${logo ? `<img src="${esc(logo)}" alt="" onerror="this.style.display='none'">` : `<span>${categoryIcons[name] || '✦'}</span>`}</div>`;
 }
 
 function thumbnail(entry, large = false) {
   const names = categoryNames(entry);
   const kind = categoryClasses[names[0]] || 'app';
-  return `<div class="thumb ${large ? 'thumb-large' : ''} ${kind}">${entry.Imagen ? `<img loading="lazy" src="${esc(entry.Imagen)}" alt="" onerror="this.style.display='none'">` : `<span>${categoryIcons[names[0]] || '✦'}</span>`}</div>`;
+  const logo = categoryLogos[names[0]];
+  return `<div class="thumb ${large ? 'thumb-large' : ''} ${kind}">${entry.Imagen ? `<img loading="lazy" src="${esc(entry.Imagen)}" alt="" onerror="this.style.display='none'">` : logo ? `<img loading="lazy" src="${logo}" alt="">` : `<span>${categoryIcons[names[0]] || '✦'}</span>`}</div>`;
 }
 
 function card(entry) {
